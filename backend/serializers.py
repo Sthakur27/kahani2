@@ -4,22 +4,54 @@ frontend depends on are preserved verbatim. Also holds small DB helpers shared
 across routers."""
 from sqlalchemy import func, select
 
-from models import EdgeVote, NodeView, Story, StoryNode, User
+from models import Edge, EdgeOutcome, EdgeVote, NodeView, Story, StoryNode, User
 
 
 # --------------------------------------------------------------------------- #
-# DB helpers
+# Edge-based structure helpers (the edge model is the source of truth; the
+# legacy parent_node_id/edge_prompt columns are kept in sync as a cache).
 # --------------------------------------------------------------------------- #
+def inbound_edge(session, node_id: int) -> Edge | None:
+    """The edge whose outcome leads into this node (each node has ≤1)."""
+    return session.scalar(
+        select(Edge)
+        .join(EdgeOutcome, EdgeOutcome.edge_id == Edge.id)
+        .where(EdgeOutcome.to_node_id == node_id)
+        .limit(1)
+    )
+
+
+def child_nodes_select(story_id: int, from_node_id: int | None):
+    """SELECT over StoryNode for the children reachable from a node via edges
+    (or off the story blurb when from_node_id is None)."""
+    stmt = (
+        select(StoryNode)
+        .join(EdgeOutcome, EdgeOutcome.to_node_id == StoryNode.id)
+        .join(Edge, Edge.id == EdgeOutcome.edge_id)
+        .where(Edge.story_id == story_id)
+    )
+    return stmt.where(
+        Edge.from_node_id.is_(None)
+        if from_node_id is None
+        else Edge.from_node_id == from_node_id
+    )
+
+
 def ancestor_chain(session, node: StoryNode) -> list[StoryNode]:
-    """Walk parent links upward; return ancestors ordered root → parent."""
+    """Walk inbound edges upward; return ancestors ordered root → parent."""
     chain = []
-    cur = node.parent_node_id
-    while cur is not None:
-        parent = session.get(StoryNode, cur)
+    cur = node
+    seen = set()
+    while True:
+        edge = inbound_edge(session, cur.id)
+        if edge is None or edge.from_node_id is None or edge.from_node_id in seen:
+            break
+        parent = session.get(StoryNode, edge.from_node_id)
         if parent is None:
             break
+        seen.add(parent.id)
         chain.append(parent)
-        cur = parent.parent_node_id
+        cur = parent
     chain.reverse()
     return chain
 

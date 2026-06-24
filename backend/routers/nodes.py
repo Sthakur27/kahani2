@@ -10,7 +10,12 @@ from auth import current_user, optional_user
 from db import get_db
 from models import EdgeVote, StoryNode, User
 from schemas import VoteRequest
-from serializers import ancestor_chain, node_to_dict, record_view
+from serializers import (
+    ancestor_chain,
+    child_nodes_select,
+    node_to_dict,
+    record_view,
+)
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
 log = logging.getLogger("storysim")
@@ -29,9 +34,7 @@ def get_node(
     user_id = user.id if user else None
     if user_id is not None:
         record_view(db, node_id, user_id)  # opening a node page = a visit
-    children = db.scalars(
-        select(StoryNode).where(StoryNode.parent_node_id == node_id)
-    ).all()
+    children = db.scalars(child_nodes_select(node.story_id, node_id)).all()
     data = node_to_dict(db, node, user_id)
     data["children"] = [node_to_dict(db, c) for c in children]
     data["children"].sort(key=lambda n: (-n["score"], n["created_at"] or ""))

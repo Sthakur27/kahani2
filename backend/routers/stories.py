@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 import llm
 from auth import current_user, optional_user
 from db import get_db
-from models import EdgeVote, NodeView, Story, StoryNode, User
+from models import Edge, EdgeOutcome, EdgeVote, NodeView, Story, StoryNode, User
 from schemas import NodeCreate
 from serializers import (
     ancestor_chain,
@@ -92,14 +92,16 @@ def list_nodes(
     if db.get(Story, story_id) is None:
         raise HTTPException(404, "story not found")
 
-    # total at this level (for "load more")
-    total_stmt = select(func.count(StoryNode.id)).where(
-        StoryNode.story_id == story_id
+    # total at this level (for "load more") — counted via edges
+    total_stmt = (
+        select(func.count(EdgeOutcome.id))
+        .join(Edge, Edge.id == EdgeOutcome.edge_id)
+        .where(Edge.story_id == story_id)
     )
     total_stmt = total_stmt.where(
-        StoryNode.parent_node_id.is_(None)
+        Edge.from_node_id.is_(None)
         if parent_id is None
-        else StoryNode.parent_node_id == parent_id
+        else Edge.from_node_id == parent_id
     )
     total = db.scalar(total_stmt) or 0
 
@@ -133,15 +135,17 @@ def list_nodes(
 
     stmt = (
         select(StoryNode, score, cnt, views)
+        .join(EdgeOutcome, EdgeOutcome.to_node_id == StoryNode.id)
+        .join(Edge, Edge.id == EdgeOutcome.edge_id)
         .outerjoin(score_sq, score_sq.c.nid == StoryNode.id)
         .outerjoin(child_sq, child_sq.c.pid == StoryNode.id)
         .outerjoin(views_sq, views_sq.c.nid == StoryNode.id)
-        .where(StoryNode.story_id == story_id)
+        .where(Edge.story_id == story_id)
     )
     if parent_id is None:
-        stmt = stmt.where(StoryNode.parent_node_id.is_(None))
+        stmt = stmt.where(Edge.from_node_id.is_(None))
     else:
-        stmt = stmt.where(StoryNode.parent_node_id == parent_id)
+        stmt = stmt.where(Edge.from_node_id == parent_id)
     stmt = stmt.order_by(score.desc(), StoryNode.created_at.asc())
     stmt = stmt.limit(limit).offset(offset)
 
@@ -201,11 +205,21 @@ def story_tree(
         .order_by(StoryNode.created_at.asc())
     )
     rows = db.execute(stmt).all()
+
+    # Structure (parent + the label leading in) is derived from the edge model.
+    struct = db.execute(
+        select(EdgeOutcome.to_node_id, Edge.from_node_id, Edge.label)
+        .join(Edge, Edge.id == EdgeOutcome.edge_id)
+        .where(Edge.story_id == story_id)
+    ).all()
+    parent_of = {to_id: from_id for (to_id, from_id, _) in struct}
+    label_of = {to_id: label for (to_id, _, label) in struct}
+
     nodes = [
         {
             "id": n.id,
-            "parent_node_id": n.parent_node_id,
-            "edge_prompt": n.edge_prompt,
+            "parent_node_id": parent_of.get(n.id),
+            "edge_prompt": label_of.get(n.id),
             "content": n.content if vis else None,
             "author": n.author.username if n.author else None,
             "score": int(s or 0),
@@ -252,14 +266,28 @@ def create_node(
 
     node = StoryNode(
         story_id=story_id,
-        parent_node_id=parent_node_id,
+        parent_node_id=parent_node_id,  # legacy cache, kept in sync with the edge
         user_id=user.id,
-        edge_prompt=edge_prompt,
+        edge_prompt=edge_prompt,  # legacy cache (= edge.label)
         content=content,
     )
     db.add(node)
     db.commit()
     db.refresh(node)
+
+    # Mirror the choice into the edge model (the source of truth for structure).
+    # Must exist before summary generation, since ancestor_chain walks edges.
+    edge = Edge(
+        story_id=story_id,
+        from_node_id=parent_node_id,
+        label=edge_prompt,
+        kind="plain",
+        created_by=user.id,
+    )
+    db.add(edge)
+    db.flush()
+    db.add(EdgeOutcome(edge_id=edge.id, band="plain", to_node_id=node.id))
+    db.commit()
 
     # Synchronously generate the "story so far" recap (MVP). Never fail the
     # create if the LLM is unavailable or errors — just leave it NULL.
