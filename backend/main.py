@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from routers import admin, ai, auth, leaderboard, me, nodes, stories
+from routers import admin, ai, auth, leaderboard, me, nodes, runs, stories
 from seeds import init_db
 
 
@@ -45,7 +45,7 @@ def health():
     return {"status": "ok"}
 
 
-for r in (auth, admin, stories, nodes, ai, leaderboard, me):
+for r in (auth, admin, stories, nodes, ai, leaderboard, me, runs):
     app.include_router(r.router)
 
 

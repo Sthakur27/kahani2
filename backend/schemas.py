@@ -23,3 +23,8 @@ class DraftRequest(BaseModel):
 
 class VoteRequest(BaseModel):
     value: int = 1
+
+
+class StartRunRequest(BaseModel):
+    char_class: str | None = None  # warrior | rogue | mage (default warrior)
+    name: str | None = None
