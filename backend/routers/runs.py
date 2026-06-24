@@ -1,7 +1,7 @@
 """RPG run lifecycle: start a playthrough (pick a class), read its state, and
 take a (plain) edge applying its effects. Roll edges arrive in a later phase."""
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 import game
@@ -383,7 +383,7 @@ def run_summary(run_id: int, db: Session = Depends(get_db), user: User = Depends
         if s.snapshot and s.snapshot.get("characters"):
             hp_after = s.snapshot["characters"][0]["hp"]
         journey.append({
-            "seq": s.seq, "label": labels.get(s.edge_id),
+            "id": s.id, "seq": s.seq, "label": labels.get(s.edge_id),
             "roll": roll, "effects": effs, "hp_after": hp_after,
         })
 
@@ -403,6 +403,59 @@ def run_summary(run_id: int, db: Session = Depends(get_db), user: User = Depends
         },
         "journey": journey,
     }
+
+
+@router.post("/runs/{run_id}/restore/{step_id}")
+def restore_step(
+    run_id: int,
+    step_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Save-anywhere: rewind the run to a previous step's snapshot (rebuild HP/
+    stats/inventory/flags + position) and truncate the steps after it. Gated by
+    the story's death_policy (permadeath disallows; checkpoint is future work)."""
+    run = _owned_run(db, run_id, user)
+    story = db.get(Story, run.story_id)
+    if story and story.death_policy == "permadeath":
+        raise HTTPException(409, "this story is permadeath — no rewinding")
+    step = db.scalar(
+        select(RunStep).where(RunStep.id == step_id, RunStep.run_id == run.id)
+    )
+    if step is None:
+        raise HTTPException(404, "step not found")
+    snap = step.snapshot or {}
+
+    # restore run + character state from the snapshot
+    run.current_node_id = step.arrived_node_id
+    run.status = snap.get("status", "active")
+    run.party_gold = snap.get("party_gold", run.party_gold)
+    char = db.scalar(select(RunCharacter).where(RunCharacter.run_id == run.id))
+    csnap = (snap.get("characters") or [{}])[0]
+    if char and csnap:
+        char.hp = csnap.get("hp", char.hp)
+        char.max_hp = csnap.get("max_hp", char.max_hp)
+        char.status = csnap.get("status", "alive")
+        for short, col in game.STAT_COLS.items():
+            if short in (csnap.get("stats") or {}):
+                setattr(char, col, csnap["stats"][short])
+
+    # rebuild inventory + flags
+    db.execute(delete(RunInventory).where(RunInventory.run_id == run.id))
+    for it in snap.get("inventory", []):
+        db.add(RunInventory(
+            run_id=run.id, character_id=it.get("character_id") or (char.id if char else None),
+            item_id=it["item_id"], count=it["count"],
+        ))
+    db.execute(delete(RunFlag).where(RunFlag.run_id == run.id))
+    for k, v in (snap.get("flags") or {}).items():
+        db.add(RunFlag(run_id=run.id, key=k, value=v))
+
+    # truncate the steps that came after — this rewind becomes the new tip
+    db.execute(delete(RunStep).where(RunStep.run_id == run.id, RunStep.seq > step.seq))
+    db.commit()
+    db.refresh(run)
+    return _run_state(db, run)
 
 
 @router.get("/me/runs")

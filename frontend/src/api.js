@@ -99,3 +99,5 @@ export const takeEdge = (runId, edgeId) =>
   http(`/runs/${runId}/take/${edgeId}`, { method: "POST" });
 export const useItem = (runId, itemId) =>
   http(`/runs/${runId}/use-item/${itemId}`, { method: "POST" });
+export const restoreStep = (runId, stepId) =>
+  http(`/runs/${runId}/restore/${stepId}`, { method: "POST" });

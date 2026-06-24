@@ -9,6 +9,7 @@ import {
   startRun,
   takeEdge,
   useItem,
+  restoreStep,
 } from "../api.js";
 import { useAuth } from "../auth.jsx";
 import "./CampaignPlay.css";
@@ -120,6 +121,23 @@ export default function CampaignPlay() {
     [run, busy]
   );
 
+  const rewind = useCallback(
+    (stepId) => {
+      if (!run || busy) return;
+      setBusy(true);
+      setError(null);
+      restoreStep(run.id, stepId)
+        .then((s) => {
+          setRun(s);
+          setLastEffects([]);
+          setLastRoll(null);
+        })
+        .catch((e) => setError(e.message))
+        .finally(() => setBusy(false));
+    },
+    [run, busy]
+  );
+
   // When the run reaches a terminal state (death / authored ending / dead-end),
   // pull the journey recap for the end screen.
   useEffect(() => {
@@ -172,8 +190,10 @@ export default function CampaignPlay() {
           lastEffects={lastEffects}
           lastRoll={lastRoll}
           summary={summary}
+          canRewind={story?.death_policy !== "permadeath"}
           onChoose={choose}
           onUseItem={consume}
+          onRewind={rewind}
           onRestart={() => {
             setRun(null);
             setLastEffects([]);
@@ -236,7 +256,7 @@ function RollBanner({ roll }) {
   );
 }
 
-function RunView({ run, story, busy, lastEffects, lastRoll, summary, onChoose, onUseItem, onRestart }) {
+function RunView({ run, story, busy, lastEffects, lastRoll, summary, canRewind, onChoose, onUseItem, onRewind, onRestart }) {
   const char = run.snapshot?.characters?.[0];
   const dead = run.status === "dead";
   const isEnding = run.status === "won" || run.node?.is_ending;
@@ -290,7 +310,12 @@ function RunView({ run, story, busy, lastEffects, lastRoll, summary, onChoose, o
         {dead && (
           <div className="run-end run-dead">
             <h2>💀 You have fallen</h2>
-            <RunSummary summary={summary} />
+            <RunSummary
+              summary={summary}
+              canRewind={canRewind}
+              busy={busy}
+              onRewind={onRewind}
+            />
             <button type="button" className="primary-btn" onClick={onRestart}>
               Start a new run
             </button>
@@ -300,7 +325,12 @@ function RunView({ run, story, busy, lastEffects, lastRoll, summary, onChoose, o
           <div className="run-end run-won">
             <h2>📖 An ending</h2>
             <p className="muted">You've reached one of this story's endings.</p>
-            <RunSummary summary={summary} />
+            <RunSummary
+              summary={summary}
+              canRewind={canRewind}
+              busy={busy}
+              onRewind={onRewind}
+            />
             <button type="button" className="primary-btn" onClick={onRestart}>
               Play again
             </button>
@@ -317,7 +347,12 @@ function RunView({ run, story, busy, lastEffects, lastRoll, summary, onChoose, o
               </Link>
               , or:
             </p>
-            <RunSummary summary={summary} />
+            <RunSummary
+              summary={summary}
+              canRewind={canRewind}
+              busy={busy}
+              onRewind={onRewind}
+            />
             <button type="button" className="ghost-btn" onClick={onRestart}>
               Start over
             </button>
@@ -386,7 +421,7 @@ function Inventory({ items, busy, active, onUse }) {
   );
 }
 
-function RunSummary({ summary }) {
+function RunSummary({ summary, canRewind, busy, onRewind }) {
   if (!summary) return null;
   const s = summary.stats;
   return (
@@ -399,17 +434,33 @@ function RunSummary({ summary }) {
         )}
       </div>
       {summary.journey.length > 0 && (
-        <ol className="summary-journey">
-          {summary.journey.map((j) => (
-            <li key={j.seq}>
-              <span className="j-label">{j.label}</span>
-              {j.roll && (
-                <span className={"j-roll band-" + j.roll.band}>🎲 {j.roll.band}</span>
-              )}
-              {j.hp_after != null && <span className="j-hp">{j.hp_after} HP</span>}
-            </li>
-          ))}
-        </ol>
+        <>
+          {canRewind && onRewind && (
+            <p className="rewind-hint muted">↩ Rewind to any earlier step and play on:</p>
+          )}
+          <ol className="summary-journey">
+            {summary.journey.map((j) => (
+              <li key={j.id ?? j.seq}>
+                <span className="j-label">{j.label}</span>
+                {j.roll && (
+                  <span className={"j-roll band-" + j.roll.band}>🎲 {j.roll.band}</span>
+                )}
+                {j.hp_after != null && <span className="j-hp">{j.hp_after} HP</span>}
+                {canRewind && onRewind && (
+                  <button
+                    type="button"
+                    className="j-rewind"
+                    disabled={busy}
+                    title="Rewind to here"
+                    onClick={() => onRewind(j.id)}
+                  >
+                    ↩
+                  </button>
+                )}
+              </li>
+            ))}
+          </ol>
+        </>
       )}
     </div>
   );

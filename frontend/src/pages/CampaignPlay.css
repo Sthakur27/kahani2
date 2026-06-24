@@ -502,6 +502,28 @@
   color: var(--muted);
   font-size: 0.78rem;
 }
+.rewind-hint {
+  font-size: 0.78rem;
+  margin: 0 0 0.4rem;
+  text-align: left;
+}
+.j-rewind {
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0 0.4rem;
+  color: var(--accent);
+  font-size: 0.8rem;
+}
+.j-rewind:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #faf6ef;
+}
+.j-rewind:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 @media (max-width: 720px) {
   .run {
