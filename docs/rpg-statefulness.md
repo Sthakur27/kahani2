@@ -276,11 +276,30 @@ A small interpreter applies `Effect` rows by `type`. Adding "gain XP", "set
 reputation", "teleport to node" later = a new `type` + a branch in the
 interpreter. **No migration.**
 
-### 4.3 Character creation
-**Recommended MVP:** class presets at run start (Warrior / Rogue / Mage), each a
-stat spread + starting HP + starting kit (items). Point-buy can be added later as
-just a different way to populate the same `Run` columns. Linear stories skip this
-entirely.
+### 4.3 Character selection — a curated, story-specific cast
+
+The premise (the daily/curated blurb) **and** the playable cast are both curated
+per story. Rather than a generic "Mage", a campaign offers 2–4 characters *themed
+to its world* but built on shared mechanical **archetypes**, so flavor is
+story-specific while balance stays consistent. e.g. *The Hollow Crown* →
+the **Disgraced Knight** (warrior archetype), the **Tomb-Robber** (rogue), the
+**Hedge-Witch** (mage).
+
+- **`Story.character_mode: 'curated' | 'classes' | 'fixed'`** — `curated` (default
+  for campaigns) shows the story's own cast; `classes` is the generic
+  Warrior/Rogue/Mage fallback; `fixed` is a single pregen protagonist (no picker).
+- A **`CharacterOption`** per story: `name`, `blurb`, `icon`, `archetype` (→ the
+  shared stat/HP preset, today's `CLASS_PRESETS`), optional stat/HP overrides,
+  `starting_items`. **Mechanics from the archetype; theming from the option.**
+- **Generation:** the campaign generator (AI, alongside the premise) produces the
+  themed cast. **Curated now; user-authored characters layer on later** — same
+  table, just CRUD'd by authors.
+- Selection happens at run start (root level); the picker renders the story's
+  `CharacterOption`s (current code hardcodes `CLASS_PRESETS` — the `classes`
+  fallback). Point-buy stays a possible future input method onto the same `Run`.
+- Kept as **story metadata, not baked into node 0** — preserves the
+  place-vs-character split (§2.7): a character is a *who*, node 0 is a *where*.
+- `story`-mode (daily, non-RPG) skips character selection entirely.
 
 ---
 
@@ -387,15 +406,18 @@ view can reflect run state (locked edges, requirements, current HP).
    no UI yet. Verified existing app still works on the edge-backed model.
 2. ✅ **Edge-backed reading** — switched the read/tree/path endpoints to edges
    (all plain). Frontend unchanged. (De-risked the big refactor before adding RPG.)
-3. **Runs + HP + class presets** — start a run, HP bar + character sheet UI,
+3. ✅ **Runs + HP + class presets** — start a run, HP bar + character sheet UI,
    `take-edge` for plain edges applying direct effects (the "−3 HP jungle").
-4. **Roll edges** — authoring 2–4 outcomes, server dice, roll animation, bands.
-5. **Items & inventory** — catalog, grant/consume, use-item, health potion;
+4. **Roll edges** — ✅ engine (server dice + bands); ▶ play-view roll display +
+   roll-edge authoring in build mode.
+5. **Curated character cast** (§4.3) — per-story `CharacterOption`s (themed
+   archetypes), picker reads them, AI generates the cast with the premise.
+6. **Items & inventory** — catalog, grant/consume, use-item, health potion;
    `Requirement` gates incl. `consume` (use-the-key vs must-possess).
-6. **Branch economy** (§13) — `Edge.status`, active cap of 3, candidate voting,
+7. **Branch economy** (§13) — `Edge.status`, active cap of 3, candidate voting,
    lazy on-read promotion + `/admin/promote`, canonize-on-depth, never-delete.
-7. **Death policy** — save-anywhere save/restore UI; optional checkpoint/permadeath.
-8. **AI roll-drafting** — Claude proposes checks + outcome prose.
+8. **Death policy** — save-anywhere save/restore UI; optional checkpoint/permadeath.
+9. **AI roll-drafting** — Claude proposes checks + outcome prose.
 
 ---
 
@@ -410,7 +432,8 @@ view can reflect run state (locked edges, requirements, current HP).
 **Still to confirm (low-stakes; recommended defaults in parens — I'll proceed on
 these unless you say otherwise):**
 1. **Stat scale & modifier** — *(D&D-style 8–18 stats, `floor((s-10)/2)` mod, d20 vs DC)*
-2. **Character creation** — *(class presets: Warrior / Rogue / Mage)*
+2. ✅ **Character selection** — per-story **curated cast** (themed reskins of
+   shared archetypes), AI-generated with the premise; user-authored later. §4.3
 3. **Crit rule** — *(natural 1/20 → crit bands, else fall back to fail/success)*
 
 ---
