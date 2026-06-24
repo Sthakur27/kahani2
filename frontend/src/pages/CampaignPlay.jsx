@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getStory, getMyRuns, getRun, startRun, takeEdge } from "../api.js";
+import {
+  getStory,
+  getMyRuns,
+  getRun,
+  getRunSummary,
+  startRun,
+  takeEdge,
+} from "../api.js";
 import { useAuth } from "../auth.jsx";
 import "./CampaignPlay.css";
 
@@ -34,6 +41,7 @@ export default function CampaignPlay() {
   const [error, setError] = useState(null);
   const [lastEffects, setLastEffects] = useState([]);
   const [lastRoll, setLastRoll] = useState(null);
+  const [summary, setSummary] = useState(null);
 
   useEffect(() => {
     getStory(id).then(setStory).catch((e) => setError(e.message));
@@ -94,6 +102,28 @@ export default function CampaignPlay() {
     [run, busy]
   );
 
+  // When the run reaches a terminal state (death / authored ending / dead-end),
+  // pull the journey recap for the end screen.
+  useEffect(() => {
+    if (!run) {
+      setSummary(null);
+      return;
+    }
+    const terminal =
+      run.status !== "active" || run.node?.is_ending || run.choices.length === 0;
+    if (!terminal) {
+      setSummary(null);
+      return;
+    }
+    let cancelled = false;
+    getRunSummary(run.id)
+      .then((s) => !cancelled && setSummary(s))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [run]);
+
   if (!user) {
     return (
       <div className="play">
@@ -123,6 +153,7 @@ export default function CampaignPlay() {
           busy={busy}
           lastEffects={lastEffects}
           lastRoll={lastRoll}
+          summary={summary}
           onChoose={choose}
           onRestart={() => {
             setRun(null);
@@ -179,11 +210,12 @@ function RollBanner({ roll }) {
   );
 }
 
-function RunView({ run, story, busy, lastEffects, lastRoll, onChoose, onRestart }) {
+function RunView({ run, story, busy, lastEffects, lastRoll, summary, onChoose, onRestart }) {
   const char = run.snapshot?.characters?.[0];
   const dead = run.status === "dead";
-  const won = run.status === "won";
-  const ended = !dead && !won && run.choices.length === 0;
+  const isEnding = run.status === "won" || run.node?.is_ending;
+  // An undeveloped leaf (no one has written past here) — NOT a real ending.
+  const deadEnd = !dead && !isEnding && run.choices.length === 0;
   const atStart = run.current_node_id == null;
   const passage = atStart ? story?.blurb : run.node?.content;
 
@@ -224,31 +256,41 @@ function RunView({ run, story, busy, lastEffects, lastRoll, onChoose, onRestart 
         {dead && (
           <div className="run-end run-dead">
             <h2>💀 You have fallen</h2>
-            <p className="muted">Your run ends here.</p>
+            <RunSummary summary={summary} />
             <button type="button" className="primary-btn" onClick={onRestart}>
               Start a new run
             </button>
           </div>
         )}
-        {won && (
+        {!dead && isEnding && (
           <div className="run-end run-won">
-            <h2>👑 Your story ends</h2>
+            <h2>📖 An ending</h2>
+            <p className="muted">You've reached one of this story's endings.</p>
+            <RunSummary summary={summary} />
             <button type="button" className="primary-btn" onClick={onRestart}>
               Play again
             </button>
           </div>
         )}
-        {ended && (
-          <div className="run-end">
-            <h2>The path ends here</h2>
-            <p className="muted">No further choices have been written down this way.</p>
+        {deadEnd && (
+          <div className="run-end run-deadend">
+            <h2>✍ The trail goes cold</h2>
+            <p className="muted">
+              No one has written past here yet — this isn't an ending, just an
+              unwritten path. Add the next branch in{" "}
+              <Link to={`/stories/${story?.id}/nodes/${run.current_node_id}`}>
+                build mode
+              </Link>
+              , or:
+            </p>
+            <RunSummary summary={summary} />
             <button type="button" className="ghost-btn" onClick={onRestart}>
               Start over
             </button>
           </div>
         )}
 
-        {!dead && !won && run.choices.length > 0 && (
+        {!dead && !isEnding && run.choices.length > 0 && (
           <>
             <h3 className="branches-title">What do you do?</h3>
             <ul className="choice-list">
@@ -273,6 +315,35 @@ function RunView({ run, story, busy, lastEffects, lastRoll, onChoose, onRestart 
           </>
         )}
       </section>
+    </div>
+  );
+}
+
+function RunSummary({ summary }) {
+  if (!summary) return null;
+  const s = summary.stats;
+  return (
+    <div className="run-summary">
+      <div className="summary-stats">
+        <span>🗺 {s.turns} steps</span>
+        <span>💔 {s.damage_taken} damage taken</span>
+        {s.rolls > 0 && (
+          <span>🎲 {s.successes}/{s.rolls} checks passed</span>
+        )}
+      </div>
+      {summary.journey.length > 0 && (
+        <ol className="summary-journey">
+          {summary.journey.map((j) => (
+            <li key={j.seq}>
+              <span className="j-label">{j.label}</span>
+              {j.roll && (
+                <span className={"j-roll band-" + j.roll.band}>🎲 {j.roll.band}</span>
+              )}
+              {j.hp_after != null && <span className="j-hp">{j.hp_after} HP</span>}
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }

@@ -81,6 +81,7 @@ def serialize_node(node: StoryNode, score, child_count, my_vote=None, view_count
         "content": node.content,
         "summary_so_far": node.summary_so_far,
         "kind": node.kind,
+        "is_ending": node.is_ending,
         "author": node.author.username if node.author else None,
         "score": int(score or 0),
         "child_count": int(child_count or 0),

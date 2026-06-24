@@ -93,5 +93,6 @@ export const getMyRuns = () => http("/me/runs");
 export const startRun = (storyId, body = {}) =>
   http(`/stories/${storyId}/runs`, { method: "POST", body: JSON.stringify(body) });
 export const getRun = (runId) => http(`/runs/${runId}`);
+export const getRunSummary = (runId) => http(`/runs/${runId}/summary`);
 export const takeEdge = (runId, edgeId) =>
   http(`/runs/${runId}/take/${edgeId}`, { method: "POST" });

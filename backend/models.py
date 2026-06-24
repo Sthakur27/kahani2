@@ -75,6 +75,8 @@ class StoryNode(Base):
     summary_so_far: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Arrival behavior (Slay-the-Spire-style): story|combat|rest|treasure|boss.
     kind: Mapped[str] = mapped_column(String(20), server_default="story")
+    # A deliberate narrative ending (vs an undeveloped leaf no one has continued).
+    is_ending: Mapped[bool] = mapped_column(server_default=text("false"), default=False)
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
     story: Mapped["Story"] = relationship(back_populates="nodes")

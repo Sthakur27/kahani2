@@ -57,7 +57,12 @@ def _run_state(session: Session, run: Run) -> dict:
         "status": run.status,
         "current_node_id": run.current_node_id,
         "node": (
-            {"id": node.id, "content": node.content, "kind": node.kind}
+            {
+                "id": node.id,
+                "content": node.content,
+                "kind": node.kind,
+                "is_ending": node.is_ending,
+            }
             if node
             else None
         ),
@@ -200,6 +205,61 @@ def take_edge(
     if roll_info:
         state["roll"] = roll_info
     return state
+
+
+@router.get("/runs/{run_id}/summary")
+def run_summary(run_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """A recap of the playthrough built from the step log: the journey (choices,
+    rolls, effects, HP), aggregate stats, the final character, and the ending."""
+    run = _owned_run(db, run_id, user)
+    steps = db.scalars(
+        select(RunStep).where(RunStep.run_id == run.id).order_by(RunStep.seq)
+    ).all()
+    edge_ids = [s.edge_id for s in steps if s.edge_id]
+    labels = {}
+    if edge_ids:
+        labels = dict(
+            db.execute(select(Edge.id, Edge.label).where(Edge.id.in_(edge_ids))).all()
+        )
+
+    journey, damage, rolls, successes = [], 0, 0, 0
+    for s in steps:
+        if s.edge_id is None:
+            continue  # the initial spawn step
+        effs = s.effects_applied or []
+        for e in effs:
+            if e.get("type") == "hp_delta" and (e.get("amount") or 0) < 0:
+                damage += -e["amount"]
+        roll = None
+        if s.roll_d20 is not None:
+            rolls += 1
+            if s.band_result in ("success", "crit_success"):
+                successes += 1
+            roll = {"d20": s.roll_d20, "modifier": s.modifier, "dc": s.dc, "band": s.band_result}
+        hp_after = None
+        if s.snapshot and s.snapshot.get("characters"):
+            hp_after = s.snapshot["characters"][0]["hp"]
+        journey.append({
+            "seq": s.seq, "label": labels.get(s.edge_id),
+            "roll": roll, "effects": effs, "hp_after": hp_after,
+        })
+
+    node = db.get(StoryNode, run.current_node_id) if run.current_node_id else None
+    char = db.scalar(select(RunCharacter).where(RunCharacter.run_id == run.id))
+    return {
+        "run_id": run.id,
+        "status": run.status,  # active | dead | won
+        "is_ending": bool(node and node.is_ending),
+        "ending_text": node.content if (node and node.is_ending) else None,
+        "character": game.character_dict(char) if char else None,
+        "stats": {
+            "turns": len(journey),
+            "damage_taken": damage,
+            "rolls": rolls,
+            "successes": successes,
+        },
+        "journey": journey,
+    }
 
 
 @router.get("/me/runs")

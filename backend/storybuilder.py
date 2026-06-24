@@ -43,6 +43,7 @@ def add_branch(
     kind: str = "story",
     summary: str | None = None,
     effects: list[dict] | None = None,
+    is_ending: bool = False,
 ) -> int:
     """Create a passage reachable by a new plain edge from `from_node_id`
     (None = a top-level choice off the story blurb). `effects` is a list of dicts
@@ -56,6 +57,7 @@ def add_branch(
         edge_prompt=label,            # legacy cache (= edge.label)
         content=content,
         kind=kind,
+        is_ending=is_ending,
         summary_so_far=summary,
     )
     session.add(node)
@@ -132,6 +134,7 @@ def add_roll(
             edge_prompt=spec.get("label", label),
             content=spec["content"],
             kind=spec.get("kind", "story"),
+            is_ending=spec.get("is_ending", False),
         )
         session.add(node)
         session.flush()
