@@ -33,6 +33,7 @@ export default function CampaignPlay() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [lastEffects, setLastEffects] = useState([]);
+  const [lastRoll, setLastRoll] = useState(null);
 
   useEffect(() => {
     getStory(id).then(setStory).catch((e) => setError(e.message));
@@ -68,6 +69,7 @@ export default function CampaignPlay() {
         .then((s) => {
           setRun(s);
           setLastEffects([]);
+          setLastRoll(null);
         })
         .catch((e) => setError(e.message))
         .finally(() => setBusy(false));
@@ -84,6 +86,7 @@ export default function CampaignPlay() {
         .then((s) => {
           setRun(s);
           setLastEffects(s.applied_effects || []);
+          setLastRoll(s.roll || null);
         })
         .catch((e) => setError(e.message))
         .finally(() => setBusy(false));
@@ -119,10 +122,12 @@ export default function CampaignPlay() {
           story={story}
           busy={busy}
           lastEffects={lastEffects}
+          lastRoll={lastRoll}
           onChoose={choose}
           onRestart={() => {
             setRun(null);
             setLastEffects([]);
+            setLastRoll(null);
           }}
         />
       )}
@@ -155,7 +160,26 @@ function ClassPicker({ story, busy, onPick }) {
   );
 }
 
-function RunView({ run, story, busy, lastEffects, onChoose, onRestart }) {
+const VERDICT = {
+  crit_success: "Critical success!",
+  success: "Success",
+  fail: "Failed",
+  crit_fail: "Critical fail!",
+};
+
+function RollBanner({ roll }) {
+  const band = roll.effective_band || roll.band;
+  const mod =
+    roll.modifier >= 0 ? `+ ${roll.modifier}` : `− ${Math.abs(roll.modifier)}`;
+  return (
+    <div className={"roll-banner roll-" + band}>
+      🎲 {roll.stat?.toUpperCase()} check — rolled <b>{roll.d20}</b> {mod} ={" "}
+      <b>{roll.total}</b> vs DC {roll.dc} → <b>{VERDICT[band] || band}</b>
+    </div>
+  );
+}
+
+function RunView({ run, story, busy, lastEffects, lastRoll, onChoose, onRestart }) {
   const char = run.snapshot?.characters?.[0];
   const dead = run.status === "dead";
   const won = run.status === "won";
@@ -168,6 +192,7 @@ function RunView({ run, story, busy, lastEffects, onChoose, onRestart }) {
       {char && <CharacterSheet char={char} />}
 
       <section className="run-main">
+        {lastRoll && <RollBanner roll={lastRoll} />}
         {lastEffects.filter((e) => effectLabel(e)).length > 0 && (
           <div className="effects-flash">
             {lastEffects.map((e, i) => {

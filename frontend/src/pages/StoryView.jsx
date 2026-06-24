@@ -51,6 +51,98 @@ function ChoiceMechanics({ node }) {
   );
 }
 
+const BAND_ORDER = ["crit_success", "success", "fail", "crit_fail"];
+const BAND_LABEL = {
+  crit_success: "Crit success",
+  success: "Success",
+  fail: "Fail",
+  crit_fail: "Crit fail",
+};
+
+// Group choices by their inbound edge so a roll edge (which has several outcome
+// nodes) shows as ONE choice, while plain edges stay one node each.
+function groupByEdge(items) {
+  const groups = [];
+  const byEdge = new Map();
+  for (const n of items) {
+    const key = n.edge?.edge_id ?? `n${n.id}`;
+    let g = byEdge.get(key);
+    if (!g) {
+      g = { key, edge: n.edge || {}, items: [] };
+      byEdge.set(key, g);
+      groups.push(g);
+    }
+    g.items.push(n);
+  }
+  return groups;
+}
+
+function BranchCard({ n, campaign, onEnter }) {
+  return (
+    <li className="node-card clickable" onClick={() => onEnter(n)}>
+      {n.edge_prompt && <div className="edge-prompt">“{n.edge_prompt}”</div>}
+      {campaign && <ChoiceMechanics node={n} />}
+      <p>{n.content}</p>
+      <div className="node-meta">
+        <span className="score">▲ {n.score}</span>
+        <span className="muted">👁 {n.view_count}</span>
+        <span className="muted">
+          {n.child_count} continuation{n.child_count === 1 ? "" : "s"}
+        </span>
+        {n.author && <span className="byline">by @{n.author}</span>}
+      </div>
+    </li>
+  );
+}
+
+// A roll edge in build mode: the check + each authored outcome band leading to
+// its passage (clickable to explore that result).
+function RollChoiceCard({ group, onEnter }) {
+  const edge = group.edge || {};
+  const label = group.items[0]?.edge_prompt || "Skill check";
+  const items = [...group.items].sort(
+    (a, b) => BAND_ORDER.indexOf(a.edge?.band) - BAND_ORDER.indexOf(b.edge?.band)
+  );
+  return (
+    <li className="node-card roll-card">
+      <div className="edge-prompt">“{label}”</div>
+      <div className="choice-mechanics">
+        {edge.check_stat && (
+          <span className="check-tag">
+            {edge.check_stat.toUpperCase()} {edge.check_dc}
+          </span>
+        )}
+        <span className="muted">🎲 roll · {items.length} outcomes</span>
+      </div>
+      <ul className="roll-outcomes">
+        {items.map((n) => (
+          <li
+            key={n.id}
+            className="roll-outcome clickable"
+            onClick={() => onEnter(n)}
+          >
+            <span className={"band-tag band-" + n.edge?.band}>
+              {BAND_LABEL[n.edge?.band] || n.edge?.band}
+            </span>
+            {(n.edge?.effects || [])
+              .map(effectChip)
+              .filter(Boolean)
+              .map((c, i) => (
+                <span key={i} className={"fx" + (c.tone ? " fx-" + c.tone : "")}>
+                  {c.label}
+                </span>
+              ))}
+            <span className="roll-snippet">
+              {n.content.slice(0, 90)}
+              {n.content.length > 90 ? "…" : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </li>
+  );
+}
+
 export default function StoryView() {
   const { id, nodeId } = useParams();
   const navigate = useNavigate();
@@ -283,30 +375,24 @@ export default function StoryView() {
               </p>
             ) : (
               <ul className="node-list">
-                {branches.items.map((n) => (
-                  <li
-                    key={n.id}
-                    className="node-card clickable"
-                    onClick={() => enterBranch(n)}
-                  >
-                    {n.edge_prompt && (
-                      <div className="edge-prompt">“{n.edge_prompt}”</div>
-                    )}
-                    {story.mode === "campaign" && <ChoiceMechanics node={n} />}
-                    <p>{n.content}</p>
-                    <div className="node-meta">
-                      <span className="score">▲ {n.score}</span>
-                      <span className="muted">👁 {n.view_count}</span>
-                      <span className="muted">
-                        {n.child_count} continuation
-                        {n.child_count === 1 ? "" : "s"}
-                      </span>
-                      {n.author && (
-                        <span className="byline">by @{n.author}</span>
-                      )}
-                    </div>
-                  </li>
-                ))}
+                {groupByEdge(branches.items).map((g) =>
+                  story.mode === "campaign" && g.edge?.kind === "roll" ? (
+                    <RollChoiceCard
+                      key={`e${g.key}`}
+                      group={g}
+                      onEnter={enterBranch}
+                    />
+                  ) : (
+                    g.items.map((n) => (
+                      <BranchCard
+                        key={n.id}
+                        n={n}
+                        campaign={story.mode === "campaign"}
+                        onEnter={enterBranch}
+                      />
+                    ))
+                  )
+                )}
               </ul>
             )}
             {!loadingBranches && branches.items.length < branches.total && (

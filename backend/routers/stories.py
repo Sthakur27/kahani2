@@ -134,7 +134,7 @@ def list_nodes(
     views = func.coalesce(views_sq.c.views, 0)
 
     stmt = (
-        select(StoryNode, Edge, score, cnt, views)
+        select(StoryNode, Edge, EdgeOutcome.band, score, cnt, views)
         .join(EdgeOutcome, EdgeOutcome.to_node_id == StoryNode.id)
         .join(Edge, Edge.id == EdgeOutcome.edge_id)
         .outerjoin(score_sq, score_sq.c.nid == StoryNode.id)
@@ -151,31 +151,33 @@ def list_nodes(
 
     rows = db.execute(stmt).all()
 
-    # Edge mechanics for each choice (for campaign "build" mode): the inbound
-    # edge's check + the effects taking it would apply.
-    edge_ids = [edge.id for (_n, edge, _s, _c, _v) in rows]
-    eff_map: dict[int, list] = {}
+    # Per-outcome effects, keyed by (edge_id, band) so a roll edge's bands each
+    # show their own effects (for campaign "build" mode).
+    edge_ids = [edge.id for (_n, edge, _b, _s, _c, _v) in rows]
+    eff_map: dict[tuple, list] = {}
     if edge_ids:
         eff_rows = db.execute(
-            select(EdgeOutcome.edge_id, Effect)
+            select(EdgeOutcome.edge_id, EdgeOutcome.band, Effect)
             .join(Effect, Effect.outcome_id == EdgeOutcome.id)
             .where(EdgeOutcome.edge_id.in_(edge_ids))
         ).all()
-        for (eid, ef) in eff_rows:
-            eff_map.setdefault(eid, []).append({
+        for (eid, band, ef) in eff_rows:
+            eff_map.setdefault((eid, band), []).append({
                 "type": ef.type, "amount": ef.amount, "stat": ef.stat,
                 "item_id": ef.item_id, "flag_key": ef.flag_key,
             })
 
     response.headers["X-Total-Count"] = str(total)
     payload = []
-    for (n, edge, s, c, v) in rows:
+    for (n, edge, band, s, c, v) in rows:
         d = serialize_node(n, s, c, view_count=v)
         d["edge"] = {
+            "edge_id": edge.id,
             "kind": edge.kind,
             "check_stat": edge.check_stat,
             "check_dc": edge.check_dc,
-            "effects": eff_map.get(edge.id, []),
+            "band": band,
+            "effects": eff_map.get((edge.id, band), []),
         }
         payload.append(d)
     return payload

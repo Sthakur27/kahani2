@@ -46,6 +46,82 @@
   margin: 0.15rem 0 0.5rem;
 }
 
+/* ---- roll result banner (play view) ---- */
+.roll-banner {
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--border);
+  background: #faf6ef;
+}
+.roll-banner.roll-success,
+.roll-banner.roll-crit_success {
+  background: #dcebd2;
+  border-color: #b6d3a3;
+  color: #3f6531;
+}
+.roll-banner.roll-fail,
+.roll-banner.roll-crit_fail {
+  background: #f4d9c8;
+  border-color: #e3b89c;
+  color: #8f4a22;
+}
+
+/* ---- roll choice card (build view) ---- */
+.roll-card {
+  cursor: default;
+  border-left: 3px solid var(--accent);
+}
+.roll-outcomes {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.roll-outcome {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.4rem 0.5rem;
+  background: #faf6ef;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.roll-outcome:hover {
+  border-color: var(--accent);
+}
+.roll-snippet {
+  flex: 1;
+  min-width: 160px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.band-tag {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: #ece6dc;
+  color: var(--muted);
+}
+.band-tag.band-success,
+.band-tag.band-crit_success {
+  background: #dcebd2;
+  color: #4f7a3d;
+}
+.band-tag.band-fail,
+.band-tag.band-crit_fail {
+  background: #f4d9c8;
+  color: #a1542b;
+}
+
 .play-topbar {
   display: flex;
   align-items: center;
