@@ -1,8 +1,11 @@
 """Node-centric routes: a node + its children, the root→node path, and voting."""
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import llm
 from auth import current_user, optional_user
 from db import get_db
 from models import EdgeVote, StoryNode, User
@@ -10,6 +13,7 @@ from schemas import VoteRequest
 from serializers import ancestor_chain, node_to_dict, record_view
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
+log = logging.getLogger("storysim")
 
 
 @router.get("/{node_id}")
@@ -44,6 +48,17 @@ def node_path(node_id: int, db: Session = Depends(get_db)):
     if node is None:
         raise HTTPException(404, "node not found")
     chain = [*ancestor_chain(db, node), node]  # root → current
+
+    # The sidebar recap reads the current (terminal) node's summary. Seeded nodes
+    # predate AI generation, so fill it lazily on first view, then cache it.
+    if node.summary_so_far is None and llm.ai_available():
+        try:
+            node.summary_so_far = llm.summarize_path(node.story, chain[:-1], node)
+            db.commit()
+            db.refresh(node)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("lazy summary generation failed: %s", exc)
+
     return [node_to_dict(db, n) for n in chain]
 
 
