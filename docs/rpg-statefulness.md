@@ -119,6 +119,33 @@ machinery:
 The shadow-tree map renders each node with its kind's icon (🗡 combat, ❓ event,
 🔥 rest, 💰 treasure, 👑 boss), just like StS.
 
+### 2.7 Two lenses: play vs. build/author
+
+A node is a **place**; a character is a **journey** through places. Only a *run*
+has a character — a node/chain never does. This resolves "if you can write from
+anywhere, whose character are you?": while browsing you are *no one's* character;
+you only have a character inside a **run**, and a run always starts at the top and
+goes **forward**. So the same map of places is seen through two lenses:
+
+| | **Build / explore** (StoryView) | **Play** (a run, CampaignPlay) |
+|---|---|---|
+| Who you are | a level-designer / reader | your own character |
+| Navigation | jump anywhere (map, URL) | forward only, from the root |
+| State | none (no HP/character) | HP/stats/inventory accumulate |
+| Choices | show their wiring (kind, check, effects); add/edit | **resolve** (roll/apply); lived |
+| Purpose | author + curate the world | experience it as a journey |
+
+**Authoring is level design, not playing.** Writing a branch off any node defines
+a *rule for that place* (prose + check + effects) — you aren't claiming a
+character stood there. Consequence: **prose stays state-agnostic** — describe the
+place/event ("the water is rising"), never hard-coded numbers ("you have 3 HP");
+mechanical state lives in the HP bar / effect chips. That guideline dissolves the
+"this deep node assumes a wounded hero" problem.
+
+Authoring happens **out-of-run** (the build lens, from anywhere — option A). An
+immersive in-run "extend from where I stand" mode can layer on later (option B).
+Daily `story`-mode stories have only the build/read lens (no character, no play).
+
 ---
 
 ## 3. Data model
