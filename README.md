@@ -89,6 +89,23 @@ Schema changes are tracked with **Alembic** (`backend/alembic/`):
 ./venv/bin/alembic current && ./venv/bin/alembic history
 ```
 
+## Tests
+
+A pytest suite covers the API + RPG engine (auth, story/node contract, moderation,
+run engine — start/take/effects/death/items/restore, item-requirement gating, and
+the branch-economy promotion logic). It runs against a dedicated `storysim_test`
+database (same Postgres dialect) and forces the local AI stubs (no real Claude).
+
+```bash
+# one-time: create the test DB (as a superuser) and hand it to the app role
+createdb storysim_test
+psql -d storysim_test -c "ALTER DATABASE storysim_test OWNER TO storysim_app; ALTER SCHEMA public OWNER TO storysim_app;"
+
+cd backend && ./venv/bin/python -m pytest tests/ -q
+```
+
+The suite drops/creates tables each session, so it's self-contained and repeatable.
+
 ## Data model
 
 ```
