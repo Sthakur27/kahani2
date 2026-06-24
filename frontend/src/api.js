@@ -69,8 +69,8 @@ export const getStoryTree = (storyId) => http(`/stories/${storyId}/tree`);
 // --- nodes ---
 export const getNodes = (storyId, parentId) =>
   http(`/stories/${storyId}/nodes` + qs({ parent_id: parentId })); // array, first page
-export const getNodesPage = (storyId, parentId, { limit, offset } = {}) =>
-  httpWithTotal(`/stories/${storyId}/nodes` + qs({ parent_id: parentId, limit, offset }));
+export const getNodesPage = (storyId, parentId, { limit, offset, status } = {}) =>
+  httpWithTotal(`/stories/${storyId}/nodes` + qs({ parent_id: parentId, limit, offset, status }));
 export const getNode = (id) => http(`/nodes/${id}`);
 export const getNodePath = (id) => http(`/nodes/${id}/path`);
 export const createNode = (storyId, data) =>

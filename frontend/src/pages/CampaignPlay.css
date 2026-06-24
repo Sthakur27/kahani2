@@ -37,6 +37,14 @@
   filter: brightness(1.05);
 }
 
+/* Branch-economy proposals (StoryView build view) */
+.proposals {
+  margin-top: 1.75rem;
+}
+.candidate-card {
+  border-left: 3px dashed var(--muted);
+}
+
 /* Mechanics chips on a choice in campaign build mode (StoryView branch cards) */
 .choice-mechanics {
   display: flex;

@@ -160,9 +160,20 @@ export default function StoryView() {
   const [error, setError] = useState(null);
   const [continuing, setContinuing] = useState(false);
   const [continueNote, setContinueNote] = useState(null);
+  const [candidates, setCandidates] = useState([]); // votable proposals at this level
 
   const current = path.length ? path[path.length - 1] : null;
   const currentId = current ? current.id : null;
+
+  // Candidate proposals at a level (also lazily settles promotion on the server).
+  const loadCandidates = useCallback(
+    (parentId) => {
+      getNodesPage(id, parentId, { limit: 25, status: "candidate" })
+        .then(({ items }) => setCandidates(items))
+        .catch(() => setCandidates([]));
+    },
+    [id]
+  );
 
   // Load the first page of options for a given parent (resets paging).
   const loadBranches = useCallback(
@@ -174,8 +185,9 @@ export default function StoryView() {
         )
         .catch((e) => setError(e.message))
         .finally(() => setLoadingBranches(false));
+      loadCandidates(parentId);
     },
-    [id]
+    [id, loadCandidates]
   );
 
   const loadMoreBranches = useCallback(
@@ -440,6 +452,37 @@ export default function StoryView() {
               >
                 Log in to add an option
               </Link>
+            )}
+
+            {candidates.length > 0 && (
+              <div className="proposals">
+                <h3 className="branches-title">
+                  Proposals — vote to promote into the in-play choices
+                </h3>
+                <ul className="node-list">
+                  {candidates.map((n) => (
+                    <li key={n.id} className="node-card candidate-card">
+                      {n.edge_prompt && (
+                        <div className="edge-prompt">“{n.edge_prompt}”</div>
+                      )}
+                      <p>{n.content}</p>
+                      <div className="node-meta">
+                        {user ? (
+                          <VoteButtons
+                            nodeId={n.id}
+                            score={n.score}
+                            myVote={n.my_vote}
+                            onChange={() => loadBranches(parentId)}
+                          />
+                        ) : (
+                          <span className="score">▲ {n.score}</span>
+                        )}
+                        {n.author && <span className="byline">by @{n.author}</span>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </>
         )}
