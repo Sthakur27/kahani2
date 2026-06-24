@@ -7,12 +7,16 @@
 - **Accounts** — username/password signup & login. Login issues a **signed, expiring session token** (HMAC) the client sends as `Authorization: Bearer`; the server derives the user from the verified token, so clients can't impersonate by asserting a user id. Writes (add a node, vote) and the admin endpoint require a valid token; reads stay public.
 - **Daily prompts by genre & rating** — each day has one prompt per **genre** (sci-fi, fantasy, mystery, horror) in both a **PG** and a **mature** version. An admin generates the day's set with one click (or the `generate_daily.py` CLI); the home page filters by rating.
 - **Branching tree** — every passage is a node; anyone can add a child continuation. Top-level nodes branch directly off the day's prompt.
-- **Moderation** — every submitted passage is screened (stubbed AI) against the story's rating; PG stories reject edgier language with a friendly reason.
+- **Moderation** — every submitted passage is screened by **Claude** against the story's rating; PG stories reject edgier language with a friendly reason. (Falls back to a local stub when no API key is set.)
 - **Traversal UI** — a "your path" timeline (root → current) you can click to jump anywhere; the URL tracks your position so a refresh keeps you put.
 - **Upvote / downvote** — thumbs on each node; options are ranked by score (popularity) in SQL.
 - **View counts** — opening a node records a visit; the distinct-viewer count is shown on the node page and in the options list.
-- **Shadow tree map** — a per-story map (`/stories/:id/map`) of the whole node graph: nodes you've visited are lit and labeled (and clickable to jump straight there); the rest are dim "shadow" silhouettes of paths you haven't explored yet.
-- **AI assist** — turn rough bullet points into a polished passage ("Draft with AI"), and an auto-generated "story so far" recap on each node. Currently stubbed locally; uses Claude when an API key is set.
+- **Shadow-tree map** — an in-page **modal** (🗺 on the story view) of the whole node graph: visited nodes are lit, labeled, and clickable; the rest are dim "shadow" silhouettes. It auto-fits with zoom/pan, hover tooltips (score / views / author), and a highlighted "you are here" trail.
+- **AI assist** — turn rough notes into a polished passage ("✨ Draft with AI"), one-click **"✨ Let AI continue"** to have Claude write the next branch, and an auto-generated "story so far" recap that fills in as you read. Uses Claude (`claude-opus-4-8`) when `ANTHROPIC_API_KEY` is set; falls back to local stubs otherwise.
+- **Trending** — a leaderboard of the top-scoring branches across all stories (`/trending`).
+- **Profile / history** — click your username to see what you've **read**, **voted** on, and **written** (`/me`).
+- **Author attribution** — "by @author" credits on branch cards, the node header, and map tooltips.
+- **Campaign mode (in progress)** — a story can be `mode='campaign'`: a D&D-style text RPG with character stats, HP, dice-rolled skill checks, items, and per-player playthroughs ("runs"). The schema and run engine are built (Phases 1–3); the full design lives in [`docs/rpg-statefulness.md`](docs/rpg-statefulness.md). Daily `story`-mode content is unaffected.
 - **Voice input** — dictate into any writing field via the Web Speech API.
 
 ## Architecture
@@ -102,7 +106,9 @@ users ──< node_views >── story_nodes    (one row per user per node they'
 - **edge_votes** — votes on a node/choice. `value` is `+1` or `-1` (enforced by a `CHECK`), with `UNIQUE(user_id, story_node_id)`.
 - **node_views** — one row per `(user, node)` the first time a user opens a node. Powers the node's view count (distinct viewers) and the per-user "visited" set for the shadow tree map.
 
-Writes with no `user_id` still fall back to a seeded `demo` user (the backend's quick-and-dirty default).
+### Edge model & RPG tables
+
+Story structure is now an explicit **edge graph** (`edges` → `edge_outcomes`), not the `parent_node_id`/`edge_prompt` columns (which remain as a synced cache, to be dropped later). A plain edge has one outcome (today's linear story); a roll edge will have 2–4 outcome bands. The RPG layer adds: `effects` (state mutations on an outcome — the extensibility seam), `items` + `requirements`, and per-playthrough state in `runs` → `run_characters`, with a snapshotted `run_steps` log plus `run_inventory` / `run_flags`. `stories.mode` (`story`/`campaign`), `stories.death_policy`, and `story_nodes.kind` gate it. Full rationale and the phased plan: [`docs/rpg-statefulness.md`](docs/rpg-statefulness.md).
 
 ## API
 
@@ -117,24 +123,31 @@ Writes with no `user_id` still fall back to a seeded `demo` user (the backend's 
 | `GET /api/stories[?rating=&genre=&limit=&offset=]` | Stories, newest first; optional rating/genre filters + paging (`X-Total-Count` header)                                                                            |
 | `GET /api/stories/<id>`                     | One story (includes `genre`, `rating`)                                                                                                                                    |
 | `GET /api/stories/<id>/nodes[?parent_id=&limit=&offset=]` | Children of a node (omit `parent_id` for top-level). `score` from a LEFT JOIN on `SUM(edge_votes.value)`; ranked by score desc then recency; paged (`X-Total-Count`) |
-| `GET /api/nodes/<id>[?user_id=N]`           | A node plus its children. Includes `my_vote` (`1`/`-1`/`null`) and `view_count`. Records a view for the acting user (first view per node)                                 |
-| `GET /api/nodes/<id>/path`                  | The chain of nodes root → this node (lets the UI rebuild traversal from a URL)                                                                                            |
-| `GET /api/stories/<id>/tree[?user_id=N]`    | Whole node graph for the shadow-tree map: every node with `score`, `view_count`, and `visited` (whether the acting user has opened it)                                    |
-| `POST /api/stories/<id>/nodes`              | **Bearer token required.** Create a node: `{content, edge_prompt?, parent_node_id?}` (author = token's user). Screened by moderation (422 if blocked); generates `summary_so_far` synchronously |
+| `GET /api/nodes/<id>`                       | A node plus its children (structure from the edge model). Includes `my_vote` (`1`/`-1`/`null`) and `view_count`. Records a view for the token's user (first view per node) |
+| `GET /api/nodes/<id>/path`                  | The chain of nodes root → this node (lets the UI rebuild traversal from a URL). Lazily generates the current node's "story so far" recap if missing                       |
+| `GET /api/stories/<id>/tree`                | Whole node graph for the shadow-tree map: every node with `score`, `view_count`, `author`, and `visited` (for the token's user). `content` only for visited nodes          |
+| `POST /api/stories/<id>/nodes`              | **Bearer token required.** Create a node: `{content, edge_prompt?, parent_node_id?}` (author = token's user). Writes the node **+ a plain edge/outcome**. Screened by Claude moderation (422 if blocked); generates `summary_so_far` synchronously |
 | `POST /api/nodes/<id>/vote`                 | **Bearer token required.** `{value}` — `1` up / `-1` down / `0` clear. Upsert for the token's user; returns refreshed `score` + `my_vote`                                  |
-| `POST /api/ai/draft`                        | `{bullets, story_id, parent_node_id?}` → `{edge_prompt, content}`; polishes rough notes                                                                                   |
+| `POST /api/ai/draft`                        | `{bullets, story_id, parent_node_id?}` → `{edge_prompt, content}`; polishes rough notes (503 if no API key)                                                               |
+| `GET /api/leaderboard[?limit=]`             | Top branches across all stories, ranked by score then views then recency                                                                                                 |
+| `GET /api/me/views \| /me/votes \| /me/nodes` | **Bearer token required.** This user's read / voted / authored history (newest first)                                                                                  |
+| `GET /api/me/runs`                          | **Bearer token required.** This user's campaign playthroughs                                                                                                             |
+| `POST /api/stories/<id>/runs`               | **Bearer token required.** Start a campaign run: `{char_class?, name?}` (warrior/rogue/mage) → run state (party-of-1, HP, stats, choices)                                  |
+| `GET /api/runs/<id>`                         | **Bearer token required.** Current run state: node, party snapshot (HP/stats/inventory/flags), and available choices                                                      |
+| `POST /api/runs/<id>/take/<edge_id>`        | **Bearer token required.** Take a (plain) choice in a run: applies the outcome's effects, advances, logs a snapshotted step. Returns new state + `applied_effects`        |
 
 ## AI features
 
-The "Draft with AI" and "story so far" summary live in `backend/llm.py`. They are currently **stubbed** — local logic derives the output, so no API key is needed. Set `ANTHROPIC_API_KEY` in `backend/.env` and the real Claude calls (model `claude-opus-4-8`) are used automatically instead.
+All AI features live in `backend/llm.py`: drafting, the "story so far" summary, daily-prompt generation, and content moderation. Each transparently calls **Claude** (`claude-opus-4-8`) when `ANTHROPIC_API_KEY` is set in `backend/.env`, and falls back to local stubs otherwise — the same code path works with or without a key.
 
 ## Frontend routes
 
 - `/` — list of all stories (rating filter, "load more", and an admin "generate today's prompts" button).
 - `/login` — log in or sign up.
-- `/stories/:id` — story root (blurb + opening branches).
+- `/stories/:id` — story root (blurb + opening branches). The shadow-tree map opens here as a modal (🗺), not a separate route.
 - `/stories/:id/nodes/:nodeId` — a node page. The URL is the source of truth for your position; loading it directly rebuilds the full path from the node's ancestor chain, so a refresh stays put.
-- `/stories/:id/map` — the shadow-tree map of the whole story (visited nodes lit + clickable, the rest as shadows).
+- `/trending` — leaderboard of the top-scoring branches across all stories.
+- `/me` — your profile: read / voted / written history (and campaign runs).
 
 ## Project layout
 
@@ -142,28 +155,32 @@ The "Draft with AI" and "story so far" summary live in `backend/llm.py`. They ar
 storysim/
 ├── backend/
 │   ├── main.py         FastAPI app: CORS, error envelope, startup seeding, router wiring
-│   ├── routers/        route modules (auth, stories, nodes, ai, admin, leaderboard)
+│   ├── routers/        route modules (auth, stories, nodes, ai, admin, leaderboard, me, runs)
 │   ├── auth.py         token signing + current_user / optional_user / admin deps
 │   ├── schemas.py      Pydantic request bodies
-│   ├── serializers.py  ORM → JSON dicts + ancestor_chain / record_view helpers
+│   ├── serializers.py  ORM → JSON dicts + edge-based traversal helpers
+│   ├── game.py         RPG run engine: class presets, Effect interpreter, snapshots
+│   ├── storybuilder.py authoring helper (node + plain edge/outcome + effects)
 │   ├── seeds.py        init_db + first-run daily-story seed
-│   ├── models.py       SQLAlchemy models (User, Story, StoryNode, EdgeVote, NodeView)
+│   ├── models.py       SQLAlchemy models (content, edges/outcomes/effects, runs, …)
 │   ├── db.py           engine / session / Base / get_db dependency
-│   ├── llm.py          AI draft + summary (stubbed; Claude when keyed)
+│   ├── llm.py          AI draft / summary / daily / moderation (Claude when keyed)
 │   ├── seed_demo.py    idempotent demo-data seeder (--reset to wipe + reseed)
 │   ├── alembic/        migrations
 │   └── requirements.txt
 ├── frontend/
 │   └── src/
-│       ├── pages/      StoriesList, StoryView, StoryMap
-│       ├── components/ HistoryNav, SummaryPanel, AddOptionForm, VoteButtons, MicButton
+│       ├── pages/      StoriesList, StoryView, Trending, Profile, Login
+│       ├── components/ StoryMapModal, HistoryNav, SummaryPanel, AddOptionForm, VoteButtons, MicButton
 │       └── api.js      fetch wrappers
+├── docs/
+│   └── rpg-statefulness.md   campaign/RPG design (edges, runs, branch economy)
 └── README.md
 ```
 
 ## Notes & limitations (MVP)
 
 - **Auth** — passwords are hashed and sessions use signed, expiring Bearer tokens (`itsdangerous`, 7-day expiry), so a client can't impersonate another user. Set a strong `SECRET_KEY` in the environment for production (the default is a dev placeholder) and serve over HTTPS. Still missing for full hardening: token refresh/rotation + server-side revocation (logout is client-side only), and per-account rate limiting.
-- **Moderation + daily generation are stubbed AI** — local logic stands in for Claude; set `ANTHROPIC_API_KEY` to use the real model. The daily generator is triggered manually (admin button / `generate_daily.py`) — wire it to a real scheduler (cron) for production.
+- **AI** — drafting, summaries, daily generation, and moderation use real Claude when `ANTHROPIC_API_KEY` is set (local stubs otherwise). The daily generator is triggered manually (admin button / `generate_daily.py`) — wire it to a real scheduler (cron) for production. AI calls run synchronously in request handlers, so under real load they'd want to move to background work.
 - **Speech-to-text** needs the Web Speech API (Chrome/Edge/Safari) + mic permission; the mic button hides itself where unsupported.
 - **Deploy:** the production host must serve `index.html` for unmatched routes (SPA fallback) so a hard refresh on a node URL resolves; lock down `CORS(app)` and move secrets out of `.env`.
