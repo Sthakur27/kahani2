@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import llm
+import promotion
 from auth import current_user, optional_user
 from db import get_db
 from models import Edge, EdgeOutcome, Effect, EdgeVote, NodeView, Story, StoryNode, User
@@ -78,25 +79,33 @@ def list_nodes(
     story_id: int,
     response: Response,
     parent_id: int | None = None,
+    status: str = "active",
     limit: int = 25,
     offset: int = 0,
     db: Session = Depends(get_db),
 ):
     """Children of a node within a story. Omit parent_id to get top-level nodes.
-
-    Vote aggregates come from a single LEFT JOIN against a grouped SUM over
-    edge_votes (no per-node query); popularity ranking — highest score first,
-    then oldest — is done in SQL.
+    `status` selects the edge band: 'active' (in-play choices, default) or
+    'candidate' (votable proposals). Vote aggregates come from a grouped SUM
+    LEFT JOIN; ranking is highest score first then oldest.
     """
     limit = max(1, min(limit, 100))
-    if db.get(Story, story_id) is None:
+    story = db.get(Story, story_id)
+    if story is None:
         raise HTTPException(404, "story not found")
+    if status not in ("active", "candidate", "retired"):
+        status = "active"
+
+    # Lazy promotion: viewing a choice point's proposals settles promotions
+    # (fills free active slots, unseats weak unprotected actives). No worker.
+    if status == "candidate":
+        promotion.promote_choice_point(db, story, parent_id)
 
     # total at this level (for "load more") — counted via edges
     total_stmt = (
         select(func.count(EdgeOutcome.id))
         .join(Edge, Edge.id == EdgeOutcome.edge_id)
-        .where(Edge.story_id == story_id)
+        .where(Edge.story_id == story_id, Edge.status == status)
     )
     total_stmt = total_stmt.where(
         Edge.from_node_id.is_(None)
@@ -140,7 +149,7 @@ def list_nodes(
         .outerjoin(score_sq, score_sq.c.nid == StoryNode.id)
         .outerjoin(child_sq, child_sq.c.pid == StoryNode.id)
         .outerjoin(views_sq, views_sq.c.nid == StoryNode.id)
-        .where(Edge.story_id == story_id)
+        .where(Edge.story_id == story_id, Edge.status == status)
     )
     if parent_id is None:
         stmt = stmt.where(Edge.from_node_id.is_(None))
@@ -239,11 +248,12 @@ def story_tree(
     struct = db.execute(
         select(EdgeOutcome.to_node_id, Edge.from_node_id, Edge.label)
         .join(Edge, Edge.id == EdgeOutcome.edge_id)
-        .where(Edge.story_id == story_id)
+        .where(Edge.story_id == story_id, Edge.status == "active")
     ).all()
     parent_of = {to_id: from_id for (to_id, from_id, _) in struct}
     label_of = {to_id: label for (to_id, _, label) in struct}
 
+    # Canonical map = nodes reachable by an active edge (candidates are off-canon).
     nodes = [
         {
             "id": n.id,
@@ -256,6 +266,7 @@ def story_tree(
             "visited": bool(vis),
         }
         for (n, s, v, vis) in rows
+        if n.id in parent_of
     ]
     return {"story": story_to_dict(story), "nodes": nodes}
 
@@ -305,12 +316,25 @@ def create_node(
     db.refresh(node)
 
     # Mirror the choice into the edge model (the source of truth for structure).
-    # Must exist before summary generation, since ancestor_chain walks edges.
+    # Branch economy: in-play if there's a free active slot at this choice point,
+    # else it enters as a votable candidate. Must exist before summary generation,
+    # since ancestor_chain walks edges.
+    active_here = db.scalar(
+        select(func.count(Edge.id)).where(
+            Edge.story_id == story_id,
+            Edge.status == "active",
+            Edge.from_node_id.is_(None)
+            if parent_node_id is None
+            else Edge.from_node_id == parent_node_id,
+        )
+    ) or 0
+    edge_status = "active" if active_here < (story.active_edge_cap or 3) else "candidate"
     edge = Edge(
         story_id=story_id,
         from_node_id=parent_node_id,
         label=edge_prompt,
         kind="plain",
+        status=edge_status,
         created_by=user.id,
     )
     db.add(edge)
@@ -329,4 +353,6 @@ def create_node(
         except Exception as exc:  # noqa: BLE001
             log.warning("summary generation failed: %s", exc)
 
-    return node_to_dict(db, node)
+    result = node_to_dict(db, node)
+    result["edge_status"] = edge_status  # "active" (in-play) or "candidate"
+    return result

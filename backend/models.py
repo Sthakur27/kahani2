@@ -46,6 +46,8 @@ class Story(Base):
     death_policy: Mapped[str] = mapped_column(String(20), server_default="save_anywhere")
     # curated (per-story cast) | classes (generic W/R/M) | fixed (single pregen).
     character_mode: Mapped[str] = mapped_column(String(20), server_default="classes")
+    # Branch economy: max in-play (active) edges per choice point.
+    active_edge_cap: Mapped[int] = mapped_column(server_default="3", default=3)
     publish_date: Mapped[dt.date] = mapped_column()
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
@@ -151,6 +153,9 @@ class Edge(Base):
     )
     label: Mapped[str | None] = mapped_column(String(280), nullable=True)
     kind: Mapped[str] = mapped_column(String(10), server_default="plain")  # plain | roll
+    # active = in-play (capped per choice point) | candidate = votable proposal
+    # | retired = relegated. Only active edges are traversable.
+    status: Mapped[str] = mapped_column(String(12), server_default="active")
     check_stat: Mapped[str | None] = mapped_column(String(12), nullable=True)
     check_dc: Mapped[int | None] = mapped_column(nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

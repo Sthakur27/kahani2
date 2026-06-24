@@ -25,6 +25,10 @@ class VoteRequest(BaseModel):
     value: int = 1
 
 
+class PromoteRequest(BaseModel):
+    story_id: int | None = None  # promote one story; None = all
+
+
 class StartRunRequest(BaseModel):
     option_id: int | None = None   # a story's CharacterOption (curated cast)
     char_class: str | None = None  # warrior | rogue | mage (classes fallback)

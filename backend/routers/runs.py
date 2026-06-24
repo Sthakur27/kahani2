@@ -89,7 +89,7 @@ def _run_state(session: Session, run: Run) -> dict:
     node = session.get(StoryNode, run.current_node_id) if run.current_node_id else None
     edges = session.scalars(
         select(Edge)
-        .where(Edge.story_id == run.story_id)
+        .where(Edge.story_id == run.story_id, Edge.status == "active")
         .where(
             Edge.from_node_id.is_(None)
             if run.current_node_id is None
@@ -258,6 +258,8 @@ def take_edge(
         raise HTTPException(404, "edge not found")
     if edge.from_node_id != run.current_node_id:
         raise HTTPException(409, "that choice isn't available from here")
+    if edge.status != "active":
+        raise HTTPException(409, "that choice isn't in play")
 
     char = db.scalar(select(RunCharacter).where(RunCharacter.run_id == run.id))
     if char is None:

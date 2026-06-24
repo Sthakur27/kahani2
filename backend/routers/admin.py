@@ -6,12 +6,33 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import llm
+import promotion
 from auth import admin_user
 from db import get_db
 from models import Story, User
+from schemas import PromoteRequest
 from serializers import story_to_dict
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+@router.post("/promote")
+def promote(
+    body: PromoteRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(admin_user),
+):
+    """Settle the branch economy: promote candidate edges into free/weak active
+    slots. One story if `story_id` is given, else all. (Also runs lazily when a
+    choice point's proposals are viewed.)"""
+    if body.story_id is not None:
+        story = db.get(Story, body.story_id)
+        if story is None:
+            return {"changes": 0, "stories": 0}
+        return {"changes": promotion.promote_story(db, story), "stories": 1}
+    stories = db.scalars(select(Story)).all()
+    total = sum(promotion.promote_story(db, s) for s in stories)
+    return {"changes": total, "stories": len(stories)}
 
 
 @router.post("/generate-daily")
