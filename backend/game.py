@@ -17,16 +17,21 @@ STAT_COLS = {
     "cha": "charisma",
 }
 
-# Starting class presets (stat spread + HP). Starting kits come with the items
-# phase; for now classes differ by stats/HP only.
+# Starting class presets (stat spread + HP + starting kit, by item slug).
 CLASS_PRESETS = {
     "warrior": dict(strength=15, dexterity=12, constitution=14, intelligence=8,
-                    wisdom=10, charisma=10, hp=28),
+                    wisdom=10, charisma=10, hp=28, items=["health_potion"]),
     "rogue":   dict(strength=10, dexterity=15, constitution=12, intelligence=13,
-                    wisdom=10, charisma=12, hp=22),
+                    wisdom=10, charisma=12, hp=22, items=["health_potion", "lockpick"]),
     "mage":    dict(strength=8, dexterity=11, constitution=10, intelligence=15,
-                    wisdom=14, charisma=12, hp=18),
+                    wisdom=14, charisma=12, hp=18, items=["health_potion"]),
 }
+
+ITEM_ICONS = {"consumable": "🧪", "key": "🗝", "equipment": "🗡"}
+
+
+def item_icon(kind: str) -> str:
+    return ITEM_ICONS.get(kind, "📦")
 
 
 def ability_modifier(score: int) -> int:
@@ -73,32 +78,47 @@ def roll_check(character, stat: str, dc: int) -> dict:
 # Effect interpreter — applies Effect rows to a run/character. Adding a new
 # mechanic is a new `type` branch here, not a schema change.
 # --------------------------------------------------------------------------- #
+def _effect_to_dict(e) -> dict:
+    return {
+        "type": e.type, "amount": e.amount, "stat": e.stat,
+        "item_id": e.item_id, "count": e.count,
+        "flag_key": e.flag_key, "flag_value": e.flag_value,
+    }
+
+
 def apply_effects(session, run, character, effects) -> list[dict]:
-    """Mutate run/character state for each effect; return an audit list."""
+    """Apply a list of ORM Effect rows (an outcome's effects)."""
+    return apply_effect_dicts(session, run, character, [_effect_to_dict(e) for e in effects])
+
+
+def apply_effect_dicts(session, run, character, effects: list[dict]) -> list[dict]:
+    """Mutate run/character state for each effect dict; return an audit list.
+    Used by both outcome effects and item `on_use`."""
     applied = []
     for e in effects:
-        t = e.type
+        t = e.get("type")
+        amount = e.get("amount")
         if t == "hp_delta":
-            character.hp = max(0, min(character.max_hp, character.hp + (e.amount or 0)))
+            character.hp = max(0, min(character.max_hp, character.hp + (amount or 0)))
         elif t == "max_hp_delta":
-            character.max_hp = max(1, character.max_hp + (e.amount or 0))
+            character.max_hp = max(1, character.max_hp + (amount or 0))
             character.hp = min(character.hp, character.max_hp)
         elif t == "heal_full":
             character.hp = character.max_hp
-        elif t == "stat_delta" and e.stat in STAT_COLS:
-            col = STAT_COLS[e.stat]
-            setattr(character, col, max(1, getattr(character, col) + (e.amount or 0)))
+        elif t == "stat_delta" and e.get("stat") in STAT_COLS:
+            col = STAT_COLS[e["stat"]]
+            setattr(character, col, max(1, getattr(character, col) + (amount or 0)))
         elif t == "set_flag":
-            _set_flag(session, run.id, e.flag_key, e.flag_value)
-        elif t == "grant_item" and e.item_id:
-            _adjust_item(session, run.id, character.id, e.item_id, e.count or 1)
-        elif t == "consume_item" and e.item_id:
-            _adjust_item(session, run.id, character.id, e.item_id, -(e.count or 1))
+            _set_flag(session, run.id, e.get("flag_key"), e.get("flag_value"))
+        elif t == "grant_item" and e.get("item_id"):
+            _adjust_item(session, run.id, character.id, e["item_id"], e.get("count") or 1)
+        elif t == "consume_item" and e.get("item_id"):
+            _adjust_item(session, run.id, character.id, e["item_id"], -(e.get("count") or 1))
         elif t == "end_run":
             run.status = "won"
         applied.append({
-            "type": t, "amount": e.amount, "stat": e.stat,
-            "item_id": e.item_id, "flag_key": e.flag_key,
+            "type": t, "amount": amount, "stat": e.get("stat"),
+            "item_id": e.get("item_id"), "flag_key": e.get("flag_key"),
         })
 
     # Death check (party-of-1 for now): a downed character ends the run.

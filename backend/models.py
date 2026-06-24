@@ -239,8 +239,10 @@ class Requirement(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     edge_id: Mapped[int] = mapped_column(ForeignKey("edges.id", ondelete="CASCADE"))
     type: Mapped[str] = mapped_column(String(12))  # item | stat_min | flag
-    key: Mapped[str] = mapped_column(String(64))
+    key: Mapped[str] = mapped_column(String(64))  # item slug / stat key / flag key
     amount: Mapped[int | None] = mapped_column(nullable=True)
+    # For item requirements: whether taking the edge consumes the item.
+    consume: Mapped[bool] = mapped_column(server_default=text("false"), default=False)
 
 
 # --------------------------------------------------------------------------- #

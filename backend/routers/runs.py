@@ -11,6 +11,7 @@ from models import (
     CharacterOption,
     Edge,
     EdgeOutcome,
+    Item,
     Requirement,
     Run,
     RunCharacter,
@@ -21,6 +22,30 @@ from models import (
     StoryNode,
     User,
 )
+
+
+def _find_item(db, story_id, slug):
+    """An item by slug: a story-specific one if present, else the global catalog."""
+    return (
+        db.scalar(select(Item).where(Item.slug == slug, Item.story_id == story_id))
+        or db.scalar(select(Item).where(Item.slug == slug, Item.story_id.is_(None)))
+    )
+
+
+def _inventory_view(db, run) -> list[dict]:
+    rows = db.execute(
+        select(RunInventory, Item)
+        .join(Item, Item.id == RunInventory.item_id)
+        .where(RunInventory.run_id == run.id)
+    ).all()
+    return [
+        {
+            "item_id": it.id, "slug": it.slug, "name": it.name, "kind": it.kind,
+            "icon": game.item_icon(it.kind), "count": ri.count,
+            "usable": bool(it.on_use),
+        }
+        for (ri, it) in rows
+    ]
 
 _STAT_VIEW = {
     "str": "strength", "dex": "dexterity", "con": "constitution",
@@ -88,6 +113,7 @@ def _run_state(session: Session, run: Run) -> dict:
             else None
         ),
         "snapshot": game.build_snapshot(session, run),
+        "inventory": _inventory_view(session, run),
         "choices": [_edge_brief(e) for e in edges],
     }
 
@@ -99,7 +125,10 @@ def _owned_run(session: Session, run_id: int, user: User) -> Run:
     return run
 
 
-def _check_requirements(session: Session, run: Run, char: RunCharacter, edge: Edge) -> None:
+def _check_requirements(session: Session, run: Run, char: RunCharacter, edge: Edge) -> list[tuple]:
+    """Validate an edge's requirements (raise 409 if unmet). Returns the list of
+    (item_id, count) to consume once the edge is actually taken."""
+    consumes = []
     for r in session.scalars(select(Requirement).where(Requirement.edge_id == edge.id)):
         if r.type == "stat_min":
             col = game.STAT_COLS.get(r.key)
@@ -110,7 +139,20 @@ def _check_requirements(session: Session, run: Run, char: RunCharacter, edge: Ed
                 select(RunFlag).where(RunFlag.run_id == run.id, RunFlag.key == r.key)
             ) is None:
                 raise HTTPException(409, f"requires flag '{r.key}'")
-        # item requirements arrive with the items phase
+        elif r.type == "item":
+            item = _find_item(session, run.story_id, r.key)
+            have = 0
+            if item:
+                have = session.scalar(
+                    select(func.coalesce(func.sum(RunInventory.count), 0)).where(
+                        RunInventory.run_id == run.id, RunInventory.item_id == item.id
+                    )
+                )
+            if not item or have < (r.amount or 1):
+                raise HTTPException(409, f"requires {r.key}")
+            if r.consume:
+                consumes.append((item.id, r.amount or 1))
+    return consumes
 
 
 @router.get("/stories/{story_id}/characters")
@@ -179,6 +221,13 @@ def start_run(
     db.add(char)
     db.flush()
 
+    # starting kit (by item slug, from the archetype preset)
+    for slug in preset.get("items", []):
+        item = _find_item(db, story_id, slug)
+        if item:
+            db.add(RunInventory(run_id=run.id, character_id=char.id, item_id=item.id, count=1))
+    db.flush()
+
     db.add(RunStep(run_id=run.id, seq=0, arrived_node_id=None,
                    snapshot=game.build_snapshot(db, run)))
     db.commit()
@@ -213,7 +262,7 @@ def take_edge(
     char = db.scalar(select(RunCharacter).where(RunCharacter.run_id == run.id))
     if char is None:
         raise HTTPException(409, "run has no character")
-    _check_requirements(db, run, char, edge)
+    consumes = _check_requirements(db, run, char, edge)
 
     # Resolve the outcome: a plain edge has one; a roll edge rolls a d20 + the
     # character's stat modifier vs the DC and picks the band (with fallback).
@@ -241,6 +290,8 @@ def take_edge(
             raise HTTPException(409, "edge has no plain outcome")
 
     applied = game.apply_effects(db, run, char, outcome.effects)
+    for (iid, amt) in consumes:  # spend any required-and-consumed items
+        game._adjust_item(db, run.id, char.id, iid, -amt)
     run.current_node_id = outcome.to_node_id
     seq = (db.scalar(select(func.max(RunStep.seq)).where(RunStep.run_id == run.id)) or 0) + 1
     db.add(RunStep(
@@ -259,6 +310,41 @@ def take_edge(
     state["applied_effects"] = applied
     if roll_info:
         state["roll"] = roll_info
+    return state
+
+
+@router.post("/runs/{run_id}/use-item/{item_id}")
+def use_item(
+    run_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Use a consumable from the run's inventory: apply its on_use effect and
+    spend one. Returns the refreshed run state + applied_effects."""
+    run = _owned_run(db, run_id, user)
+    if run.status != "active":
+        raise HTTPException(409, "run is not active")
+    inv = db.scalar(
+        select(RunInventory).where(
+            RunInventory.run_id == run.id, RunInventory.item_id == item_id
+        )
+    )
+    if inv is None or inv.count <= 0:
+        raise HTTPException(409, "you don't have that item")
+    item = db.get(Item, item_id)
+    if item is None or not item.on_use:
+        raise HTTPException(409, "that item can't be used")
+    char = db.scalar(select(RunCharacter).where(RunCharacter.run_id == run.id))
+
+    applied = game.apply_effect_dicts(db, run, char, [item.on_use])
+    inv.count -= 1
+    if inv.count <= 0:
+        db.delete(inv)
+    db.commit()
+    db.refresh(run)
+    state = _run_state(db, run)
+    state["applied_effects"] = applied
     return state
 
 

@@ -5,7 +5,26 @@ import datetime as dt
 from sqlalchemy import select
 
 from db import Base, SessionLocal, engine
-from models import Story, StoryNode, User
+from models import Item, Story, StoryNode, User
+
+# Global item catalog (story_id NULL). Idempotent-seeded on startup.
+GLOBAL_ITEMS = [
+    {"slug": "health_potion", "name": "Health Potion", "kind": "consumable",
+     "description": "A swallow of warmth that knits flesh back together.",
+     "on_use": {"type": "hp_delta", "amount": 12}},
+    {"slug": "lockpick", "name": "Lockpick", "kind": "equipment",
+     "description": "A slim hooked pick for stubborn locks.", "on_use": None},
+]
+
+
+def ensure_global_items(session) -> None:
+    for spec in GLOBAL_ITEMS:
+        exists = session.scalar(
+            select(Item).where(Item.slug == spec["slug"], Item.story_id.is_(None))
+        )
+        if exists is None:
+            session.add(Item(story_id=None, **spec))
+    session.commit()
 
 
 def get_or_create_demo_user(session) -> User:
@@ -21,6 +40,7 @@ def get_or_create_demo_user(session) -> User:
 def init_db() -> None:
     Base.metadata.create_all(engine)
     with SessionLocal() as session:
+        ensure_global_items(session)
         demo = get_or_create_demo_user(session)
         today = dt.date.today()
         existing = session.scalar(select(Story).where(Story.publish_date == today))
