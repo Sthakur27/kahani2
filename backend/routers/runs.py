@@ -73,13 +73,49 @@ router = APIRouter(prefix="/api", tags=["runs"])
 STAT_KEYS = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
 
 
-def _edge_brief(e: Edge) -> dict:
+def _requirements_status(session, run, char, edge):
+    """For the play UI: each requirement's label + whether it's met, and whether
+    the edge is locked (any unmet)."""
+    needs, locked = [], False
+    for r in session.scalars(select(Requirement).where(Requirement.edge_id == edge.id)):
+        if r.type == "stat_min":
+            col = game.STAT_COLS.get(r.key)
+            ok = bool(char) and col is not None and getattr(char, col) >= (r.amount or 0)
+            text = f"{r.key.upper()} {r.amount}"
+        elif r.type == "flag":
+            ok = session.scalar(
+                select(RunFlag).where(RunFlag.run_id == run.id, RunFlag.key == r.key)
+            ) is not None
+            text = r.key.replace("_", " ")
+        elif r.type == "item":
+            item = _find_item(session, run.story_id, r.key)
+            have = 0
+            if item:
+                have = session.scalar(
+                    select(func.coalesce(func.sum(RunInventory.count), 0)).where(
+                        RunInventory.run_id == run.id, RunInventory.item_id == item.id
+                    )
+                ) or 0
+            ok = bool(item) and have >= (r.amount or 1)
+            text = (item.name if item else r.key) + (" (used)" if r.consume else "")
+        else:
+            continue
+        needs.append({"text": text, "met": bool(ok)})
+        if not ok:
+            locked = True
+    return locked, needs
+
+
+def _edge_view(session, run, char, edge: Edge) -> dict:
+    locked, needs = _requirements_status(session, run, char, edge)
     return {
-        "edge_id": e.id,
-        "label": e.label,
-        "kind": e.kind,
-        "check_stat": e.check_stat,
-        "check_dc": e.check_dc,
+        "edge_id": edge.id,
+        "label": edge.label,
+        "kind": edge.kind,
+        "check_stat": edge.check_stat,
+        "check_dc": edge.check_dc,
+        "locked": locked,
+        "requires": needs,
     }
 
 
@@ -97,6 +133,7 @@ def _run_state(session: Session, run: Run) -> dict:
         )
         .order_by(Edge.id)
     ).all()
+    char = session.scalar(select(RunCharacter).where(RunCharacter.run_id == run.id))
     return {
         "id": run.id,
         "story_id": run.story_id,
@@ -114,7 +151,7 @@ def _run_state(session: Session, run: Run) -> dict:
         ),
         "snapshot": game.build_snapshot(session, run),
         "inventory": _inventory_view(session, run),
-        "choices": [_edge_brief(e) for e in edges],
+        "choices": [_edge_view(session, run, char, e) for e in edges],
     }
 
 

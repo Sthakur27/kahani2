@@ -411,16 +411,21 @@ view can reflect run state (locked edges, requirements, current HP).
    (all plain). Frontend unchanged. (De-risked the big refactor before adding RPG.)
 3. ✅ **Runs + HP + class presets** — start a run, HP bar + character sheet UI,
    `take-edge` for plain edges applying direct effects (the "−3 HP jungle").
-4. **Roll edges** — ✅ engine (server dice + bands); ▶ play-view roll display +
-   roll-edge authoring in build mode.
-5. **Curated character cast** (§4.3) — per-story `CharacterOption`s (themed
+4. ✅ **Roll edges** — engine (server dice + bands), play-view roll display,
+   build-mode grouping, in-app authoring.
+5. ✅ **Curated character cast** (§4.3) — per-story `CharacterOption`s (themed
    archetypes), picker reads them, AI generates the cast with the premise.
-6. **Items & inventory** — catalog, grant/consume, use-item, health potion;
-   `Requirement` gates incl. `consume` (use-the-key vs must-possess).
-7. **Branch economy** (§13) — `Edge.status`, active cap of 3, candidate voting,
+6. ✅ **Items & inventory** — catalog, grant/consume, use-item, health potion;
+   `Requirement` gates incl. `consume`; locked-choice UI in play.
+7. ✅ **Branch economy** (§13) — `Edge.status`, active cap of 3, candidate voting,
    lazy on-read promotion + `/admin/promote`, canonize-on-depth, never-delete.
-8. **Death policy** — save-anywhere save/restore UI; optional checkpoint/permadeath.
-9. **AI roll-drafting** — Claude proposes checks + outcome prose.
+8. ✅ **Save-anywhere** — restore from the snapshot log; policy-gated
+   (checkpoint/permadeath available, not yet surfaced).
+9. ✅ **AI roll-drafting** — Claude proposes the check + outcome prose; authored
+   in-app via the roll form.
+
+**Status: all phases shipped.** Remaining polish: checkpoint death-policy
+behavior, periodic-window promotions, party play + combat (§12, future epics).
 
 ---
 

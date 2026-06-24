@@ -367,16 +367,27 @@ function RunView({ run, story, busy, lastEffects, lastRoll, summary, canRewind, 
                 <li key={c.edge_id}>
                   <button
                     type="button"
-                    className="choice-btn"
-                    disabled={busy}
-                    onClick={() => onChoose(c.edge_id)}
+                    className={"choice-btn" + (c.locked ? " locked" : "")}
+                    disabled={busy || c.locked}
+                    onClick={() => !c.locked && onChoose(c.edge_id)}
                   >
+                    {c.locked && <span className="lock-icon">🔒</span>}
                     {c.kind === "roll" && c.check_stat && (
                       <span className="check-tag">
                         {c.check_stat.toUpperCase()} {c.check_dc}
                       </span>
                     )}
                     {c.label}
+                    {c.requires?.length > 0 && (
+                      <span className="req-tags">
+                        {c.requires.map((r, i) => (
+                          <span key={i} className={"req-tag" + (r.met ? " met" : "")}>
+                            {r.met ? "✓ " : "needs "}
+                            {r.text}
+                          </span>
+                        ))}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}

@@ -16,7 +16,7 @@
 - **Trending** — a leaderboard of the top-scoring branches across all stories (`/trending`).
 - **Profile / history** — click your username to see what you've **read**, **voted** on, and **written** (`/me`).
 - **Author attribution** — "by @author" credits on branch cards, the node header, and map tooltips.
-- **Campaign mode (in progress)** — a story can be `mode='campaign'`: a D&D-style text RPG with character stats, HP, dice-rolled skill checks, items, and per-player playthroughs ("runs"). The schema and run engine are built (Phases 1–3); the full design lives in [`docs/rpg-statefulness.md`](docs/rpg-statefulness.md). Daily `story`-mode content is unaffected.
+- **Campaign mode** — a story can be `mode='campaign'`: a D&D-style text RPG layered on the same branching tree. Pick from a **curated, story-themed cast** (AI-generated over shared archetypes), then play a stateful **run** — HP + stats, **dice-rolled skill checks** (d20 vs DC, crit bands), **items & inventory** (use a potion; item-gated choices), **authored endings** vs undeveloped dead-ends, a **run summary**, and **save-anywhere rewind**. Authoring is its own "build" lens: see each choice's mechanics, add branches, and AI-draft skill checks. A **branch economy** keeps the canonical tree to 3 in-play choices per node with the rest as votable proposals that get promoted. Full design: [`docs/rpg-statefulness.md`](docs/rpg-statefulness.md). Daily `story`-mode content is unaffected.
 - **Voice input** — dictate into any writing field via the Web Speech API.
 
 ## Architecture

@@ -450,6 +450,33 @@
   margin-right: 0.5rem;
 }
 
+/* locked choices (unmet requirements) */
+.choice-btn.locked {
+  opacity: 0.7;
+  border-left-color: var(--muted);
+  cursor: not-allowed;
+}
+.lock-icon {
+  margin-right: 0.4rem;
+}
+.req-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-left: 0.5rem;
+}
+.req-tag {
+  font-size: 0.7rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: #f4d9c8;
+  color: #a1542b;
+}
+.req-tag.met {
+  background: #dcebd2;
+  color: #4f7a3d;
+}
+
 .run-end {
   text-align: center;
   padding: 1.5rem;
