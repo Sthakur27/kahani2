@@ -392,9 +392,10 @@ When enabled, add two fields:
 - **`Edge.resolution: 'one' | 'all'`** *(your model)*:
   - `one` — player picks which PC attempts the check; that PC's stat is rolled.
   - `all` — applies to the whole party. Each PC rolls; **navigation** is decided
-    by an aggregate rule (all-pass / majority), while **effects apply
-    per-character** by each PC's own result (the "everyone roll a DEX save —
-    those who fail take the damage" moment).
+    by an author-chosen aggregate (`Edge.all_aggregate: 'all_pass' | 'majority'`,
+    default `all_pass`), while **effects apply per-character** by each PC's own
+    result (the "everyone roll a DEX save — those who fail take the damage"
+    moment). Navigation = the party as a whole; effects = each PC individually.
   - Party-of-1 collapses both to "the one PC."
 - **`Effect.target: 'actor' | 'party' | 'character'`** — trap hits the actor;
   collapsing ceiling hits the party.
