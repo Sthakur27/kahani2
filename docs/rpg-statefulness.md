@@ -167,6 +167,9 @@ Daily `story`-mode stories have only the build/read lens (no character, no play)
   now lives in `Edge`/`EdgeOutcome`. (We may keep a *derived* `parent_node_id`
   purely as a denormalized cache for the map; see §7.)
 - `kind: str` (default `'story'`) — arrival behavior; see §2.6.
+- `is_ending: bool` (default `false`) — a deliberate narrative ending, vs an
+  undeveloped leaf nobody has continued. Drives the play end-screen (an ending
+  vs "the trail goes cold — add a branch") and run summary.
 - Optional: `is_checkpoint: bool` (see §6 persistence).
 
 **`Edge`** — a choice/action available from a node.
