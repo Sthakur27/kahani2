@@ -90,6 +90,35 @@ campaign just publishes less often) — it adds **no schema**. The daily-generat
 job gains a campaign variant later. Existing daily content stays `mode='story'`
 and is completely unaffected.
 
+### 2.6 Node kinds — the map vs. what happens *here* (Slay-the-Spire model)
+
+Borrowing Slay the Spire's separation: **the map is the edge graph (navigation);
+a node's `kind` decides what happens when you *arrive*.** Combat is *not* map
+structure — it's an arrival behavior run by an engine. This is what keeps the
+authored tree clean while still supporting fights.
+
+`StoryNode.kind` (extensible string; behavior is a handler keyed off it, so new
+kinds = new handler, **no schema change** — same philosophy as `Effect`):
+
+| kind | On arrival | Then |
+|---|---|---|
+| `story` *(default)* | read prose, pick from authored choices (the StS `?` event) | follow the chosen edge |
+| `combat` | engine runs a fight vs the node's `Encounter` | **victory →** node's normal edges become available; **defeat →** death policy (or an optional authored "defeat" edge for capture-not-death) |
+| `rest` | apply restorative effects (heal, maybe upgrade) | follow edges |
+| `treasure` | grant item(s) | follow edges |
+| `shop` *(later)* | spend gold | follow edges |
+| `boss` | `combat` variant (tougher encounter) | as combat |
+
+Two distinct dice surfaces, complementary, both reusing the d20 + `Effect`
+machinery:
+- **Roll *edge*** (§2–4): a one-shot skill check resolving a *choice* on the way
+  *out* (pick the lock, leap the gap) → branches by band.
+- **Combat *node*** (§12): a sustained multi-round fight on *arrival* → win/lose
+  loop, then rejoin the graph via edges.
+
+The shadow-tree map renders each node with its kind's icon (🗡 combat, ❓ event,
+🔥 rest, 💰 treasure, 👑 boss), just like StS.
+
 ---
 
 ## 3. Data model
@@ -108,6 +137,7 @@ and is completely unaffected.
 - **Drop** `parent_node_id` and `edge_prompt` as the source of truth — structure
   now lives in `Edge`/`EdgeOutcome`. (We may keep a *derived* `parent_node_id`
   purely as a denormalized cache for the map; see §7.)
+- `kind: str` (default `'story'`) — arrival behavior; see §2.6.
 - Optional: `is_checkpoint: bool` (see §6 persistence).
 
 **`Edge`** — a choice/action available from a node.
@@ -345,3 +375,54 @@ these unless you say otherwise):**
 1. **Stat scale & modifier** — *(D&D-style 8–18 stats, `floor((s-10)/2)` mod, d20 vs DC)*
 2. **Character creation** — *(class presets: Warrior / Rogue / Mage)*
 3. **Crit rule** — *(natural 1/20 → crit bands, else fall back to fail/success)*
+
+---
+
+## 12. Future epics & forward-compatible hooks
+
+We don't build these now, but the schema reserves cheap hooks so they bolt on
+without a remodel.
+
+### 12.1 Party (solo player, multiple PCs)
+**Hook now:** put per-character state in a **`RunCharacter`** table rather than on
+`Run` (ship MVP as a party of 1 — a party is just N of these). Add `node.kind`
+(done above).
+
+When enabled, add two fields:
+- **`Edge.resolution: 'one' | 'all'`** *(your model)*:
+  - `one` — player picks which PC attempts the check; that PC's stat is rolled.
+  - `all` — applies to the whole party. Each PC rolls; **navigation** is decided
+    by an aggregate rule (all-pass / majority), while **effects apply
+    per-character** by each PC's own result (the "everyone roll a DEX save —
+    those who fail take the damage" moment).
+  - Party-of-1 collapses both to "the one PC."
+- **`Effect.target: 'actor' | 'party' | 'character'`** — trap hits the actor;
+  collapsing ceiling hits the party.
+
+Death with a party: a PC at HP ≤ 0 is `down/dead`; the run ends only on a TPK
+(or an authored capture/defeat edge). Snapshots already cover all PCs.
+
+**Co-op multiplayer (multiple *users* in one run) is explicitly out of scope** —
+it needs shared-run concurrency, turn ownership, and presence, which breaks the
+async model. Different epic entirely.
+
+### 12.2 Combat (engine-driven, Slay-the-Spire-style)
+Combat is a **loop**, not an edge → it can't be authored as nodes. It's an engine
+interlude entered at a `kind='combat'` node (§2.6).
+
+- **`Enemy`** (catalog, like `Item`): `story_id, name, stats, hp, max_hp,
+  attacks[], abilities, ai_hint`.
+- **`Encounter`** (authored, attached to a combat node): enemy list + counts,
+  `ambush`, `can_flee`, optional authored `defeat_outcome` (capture vs death).
+- **`RunCombat`** (live state, captured in the step snapshot so save-anywhere
+  works mid-fight): enemy current HP, turn order, round, whose turn.
+- **Action API:** `POST /runs/{id}/combat/action {attack|item|flee|ability,target}`
+  — engine resolves the round (to-hit d20+mod vs defense, damage, simple enemy
+  AI like "target lowest-HP PC"), applies `Effect`s, logs a
+  `RunStep(band='combat_round')`, checks win/lose/flee.
+- **Resolution rejoins the graph:** victory → the node's normal edges; defeat →
+  death policy (or the authored defeat edge).
+
+Combat reuses the dice + `Effect` machinery; the new weight is the turn loop,
+targeting, enemy AI, status effects, and a combat UI. Treat as its own epic
+(roughly the size of Phases 1–7 combined).
