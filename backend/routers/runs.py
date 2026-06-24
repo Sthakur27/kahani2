@@ -149,21 +149,36 @@ def take_edge(
         raise HTTPException(404, "edge not found")
     if edge.from_node_id != run.current_node_id:
         raise HTTPException(409, "that choice isn't available from here")
-    if edge.kind == "roll":
-        raise HTTPException(501, "roll edges aren't supported yet")
 
     char = db.scalar(select(RunCharacter).where(RunCharacter.run_id == run.id))
     if char is None:
         raise HTTPException(409, "run has no character")
     _check_requirements(db, run, char, edge)
 
-    outcome = db.scalar(
-        select(EdgeOutcome).where(
-            EdgeOutcome.edge_id == edge.id, EdgeOutcome.band == "plain"
+    # Resolve the outcome: a plain edge has one; a roll edge rolls a d20 + the
+    # character's stat modifier vs the DC and picks the band (with fallback).
+    roll_info = None
+    if edge.kind == "roll":
+        roll_info = game.roll_check(char, edge.check_stat, edge.check_dc)
+        outcomes = {
+            o.band: o
+            for o in db.scalars(select(EdgeOutcome).where(EdgeOutcome.edge_id == edge.id))
+        }
+        outcome = next(
+            (outcomes[b] for b in game.BAND_FALLBACK.get(roll_info["band"], [roll_info["band"]]) if b in outcomes),
+            None,
         )
-    )
-    if outcome is None:
-        raise HTTPException(409, "edge has no plain outcome")
+        if outcome is None:
+            raise HTTPException(409, "roll edge has no usable outcome")
+        roll_info["effective_band"] = outcome.band
+    else:
+        outcome = db.scalar(
+            select(EdgeOutcome).where(
+                EdgeOutcome.edge_id == edge.id, EdgeOutcome.band == "plain"
+            )
+        )
+        if outcome is None:
+            raise HTTPException(409, "edge has no plain outcome")
 
     applied = game.apply_effects(db, run, char, outcome.effects)
     run.current_node_id = outcome.to_node_id
@@ -171,6 +186,10 @@ def take_edge(
     db.add(RunStep(
         run_id=run.id, seq=seq, edge_id=edge.id,
         arrived_node_id=outcome.to_node_id,
+        roll_d20=roll_info["d20"] if roll_info else None,
+        modifier=roll_info["modifier"] if roll_info else None,
+        dc=roll_info["dc"] if roll_info else None,
+        band_result=roll_info["band"] if roll_info else None,
         effects_applied=applied, snapshot=game.build_snapshot(db, run),
     ))
     db.commit()
@@ -178,6 +197,8 @@ def take_edge(
 
     state = _run_state(db, run)
     state["applied_effects"] = applied
+    if roll_info:
+        state["roll"] = roll_info
     return state
 
 

@@ -1,6 +1,8 @@
 """RPG run engine: class presets, the Effect interpreter (mutations applied when
 an outcome fires), and run-state snapshotting. Kept out of the routers so the
 rules live in one place. See docs/rpg-statefulness.md."""
+import random
+
 from sqlalchemy import select
 
 from models import RunCharacter, RunFlag, RunInventory
@@ -30,6 +32,41 @@ CLASS_PRESETS = {
 def ability_modifier(score: int) -> int:
     """D&D-style modifier: floor((score - 10) / 2)."""
     return (score - 10) // 2
+
+
+# Which outcome band a roll lands in, and the fallback order if the author didn't
+# write that band (crit_* fall back to their base band; base bands are required).
+def band_for(roll: int, modifier: int, dc: int) -> str:
+    """Natural 20 → crit_success, natural 1 → crit_fail, else d20+mod vs DC."""
+    if roll >= 20:
+        return "crit_success"
+    if roll <= 1:
+        return "crit_fail"
+    return "success" if (roll + modifier) >= (dc or 0) else "fail"
+
+
+BAND_FALLBACK = {
+    "crit_success": ["crit_success", "success"],
+    "success": ["success"],
+    "fail": ["fail"],
+    "crit_fail": ["crit_fail", "fail"],
+}
+
+
+def roll_check(character, stat: str, dc: int) -> dict:
+    """Roll a server-side d20 + the character's stat modifier against `dc`."""
+    col = STAT_COLS.get(stat or "")
+    score = getattr(character, col) if col else 10
+    mod = ability_modifier(score)
+    d20 = random.randint(1, 20)
+    return {
+        "d20": d20,
+        "modifier": mod,
+        "total": d20 + mod,
+        "dc": dc,
+        "stat": stat,
+        "band": band_for(d20, mod, dc),
+    }
 
 
 # --------------------------------------------------------------------------- #

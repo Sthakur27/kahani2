@@ -76,13 +76,70 @@ def add_branch(
     session.flush()
 
     for ef in effects or []:
-        session.add(Effect(
-            outcome_id=outcome.id,
-            type=ef["type"],
-            amount=ef.get("amount"),
-            stat=ef.get("stat"),
-            flag_key=ef.get("flag_key"),
-            flag_value=ef.get("flag_value"),
-        ))
+        _add_effect(session, outcome.id, ef)
 
     return node.id
+
+
+def _add_effect(session, outcome_id: int, ef: dict) -> None:
+    session.add(Effect(
+        outcome_id=outcome_id,
+        type=ef["type"],
+        amount=ef.get("amount"),
+        stat=ef.get("stat"),
+        flag_key=ef.get("flag_key"),
+        flag_value=ef.get("flag_value"),
+    ))
+
+
+def add_roll(
+    session,
+    *,
+    story_id: int,
+    from_node_id: int | None,
+    author_id: int,
+    label: str,
+    check_stat: str,
+    check_dc: int,
+    outcomes: dict,
+) -> tuple[int, dict]:
+    """Create a roll edge (a skill check) from `from_node_id` with up to 4 outcome
+    bands. `outcomes` maps band -> {content, kind?, label?, effects?}; `fail` and
+    `success` are required, `crit_fail`/`crit_success` optional. Each band becomes
+    its own destination passage. Returns (edge_id, {band: node_id})."""
+    for required in ("fail", "success"):
+        if required not in outcomes:
+            raise ValueError(f"roll edge needs a '{required}' outcome")
+
+    edge = Edge(
+        story_id=story_id,
+        from_node_id=from_node_id,
+        label=label,
+        kind="roll",
+        check_stat=check_stat,
+        check_dc=check_dc,
+        created_by=author_id,
+    )
+    session.add(edge)
+    session.flush()
+
+    ids = {}
+    for band, spec in outcomes.items():
+        node = StoryNode(
+            story_id=story_id,
+            parent_node_id=from_node_id,
+            user_id=author_id,
+            edge_prompt=spec.get("label", label),
+            content=spec["content"],
+            kind=spec.get("kind", "story"),
+        )
+        session.add(node)
+        session.flush()
+        oc = EdgeOutcome(edge_id=edge.id, band=band, to_node_id=node.id)
+        session.add(oc)
+        session.flush()
+        for ef in spec.get("effects", []):
+            _add_effect(session, oc.id, ef)
+        ids[band] = node.id
+
+    return edge.id, ids
