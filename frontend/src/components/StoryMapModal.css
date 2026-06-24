@@ -1,0 +1,302 @@
+/* the "Story map" trigger is an icon-only button */
+.map-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  font-size: 1.15rem;
+  line-height: 1;
+  background: #fffdf9;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.map-icon-btn:hover {
+  border-color: var(--accent);
+  background: #fff;
+}
+
+/* ---- modal chrome ---- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 28, 26, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 1000;
+  animation: map-fade 0.12s ease-out;
+}
+
+@keyframes map-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.modal {
+  background: #fffdf9;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.map-modal {
+  width: 96vw;
+  height: 94vh;
+  padding: 1.25rem 1.5rem 1.5rem;
+  gap: 0.75rem;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  flex: 1;
+}
+
+.modal-close {
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 8px;
+  width: 2rem;
+  height: 2rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.map-legend {
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.lg-visited {
+  color: var(--accent);
+}
+
+.lg-shadow {
+  color: #b9b2a6;
+}
+
+.lg-current {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ---- map canvas ---- */
+/* The stage is a fixed viewport; the tree is pan/zoomed inside it via an SVG
+   transform (no native scrollbars), so it auto-fits on open and works on touch. */
+.map-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.05) 1px, transparent 0)
+    0 0 / 22px 22px;
+}
+
+.map-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none; /* we handle pan/pinch ourselves */
+}
+
+.map-svg:active {
+  cursor: grabbing;
+}
+
+/* zoom / fit controls, pinned to the corner of the stage */
+.map-controls {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.map-controls button {
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--ink);
+  background: rgba(255, 253, 249, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.map-controls button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.map-hint {
+  white-space: nowrap;
+}
+
+/* edges */
+.map-edge {
+  stroke: #e7e1d8;
+  stroke-width: 2;
+}
+
+.map-edge.lit {
+  stroke: #d8b48c;
+}
+
+/* the reader's trail (root → current) reads as a stronger gold thread */
+.map-edge.trail {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+/* nodes */
+.map-node circle {
+  stroke-width: 2;
+}
+
+.map-node.visited {
+  cursor: pointer;
+}
+
+.map-node.visited circle {
+  fill: #fffdf9;
+  stroke: var(--accent);
+}
+
+.map-node.visited:hover circle {
+  fill: var(--accent);
+}
+
+.map-node.root circle {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
+/* nodes along the reader's trail get a filled gold dot */
+.map-node.trail circle {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
+/* "you are here" — a bold accent ring around the current node */
+.map-node.current .map-node-ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  opacity: 0.55;
+}
+
+.map-node.current circle {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
+.map-node.current .map-label {
+  font-weight: 700;
+  fill: var(--accent);
+}
+
+/* unvisited = dim shadow silhouette, not interactive */
+.map-node.shadow circle {
+  fill: #cfc7ba;
+  stroke: #cfc7ba;
+  opacity: 0.45;
+}
+
+.map-node.shadow:hover circle {
+  opacity: 0.7;
+}
+
+.map-label {
+  text-anchor: middle;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 11px;
+  fill: var(--ink);
+  pointer-events: none;
+}
+
+.map-node.root .map-label {
+  font-weight: 700;
+}
+
+/* ---- hover tooltip ---- */
+.map-tip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 14px));
+  width: 230px;
+  background: var(--ink);
+  color: #fdfbf6;
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.map-tip-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.map-tip-author {
+  margin-bottom: 0.35rem;
+  font-size: 0.74rem;
+  color: #c9c1b3;
+}
+
+.map-tip-body {
+  margin: 0 0 0.4rem;
+  color: #e8e2d6;
+  font-style: italic;
+}
+
+.map-tip-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  color: #f0d9bf;
+  font-variant-numeric: tabular-nums;
+}
+
+.map-tip-foot {
+  margin-top: 0.4rem;
+  font-size: 0.74rem;
+  color: #c9c1b3;
+}
+
+.map-tip-foot.muted {
+  color: #9b9384;
+}
