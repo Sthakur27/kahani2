@@ -3,10 +3,27 @@
   margin: 0 auto;
 }
 
-/* "Play as a character" call-to-action shown on campaign stories (StoryView) */
+/* Campaign "build mode" banner + play CTA shown on campaign stories (StoryView) */
+.campaign-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0 0 1.25rem;
+  padding: 0.6rem 0.8rem;
+  background: #faf6ef;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+}
+.campaign-hint {
+  flex: 1;
+  min-width: 240px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
 .play-cta {
   display: inline-block;
-  margin: 0 0 1rem;
   padding: 0.5rem 0.9rem;
   background: var(--accent);
   color: #fffdf9;
@@ -14,9 +31,19 @@
   text-decoration: none;
   font-size: 0.9rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 .play-cta:hover {
   filter: brightness(1.05);
+}
+
+/* Mechanics chips on a choice in campaign build mode (StoryView branch cards) */
+.choice-mechanics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.15rem 0 0.5rem;
 }
 
 .play-topbar {

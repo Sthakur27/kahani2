@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 import llm
 from auth import current_user, optional_user
 from db import get_db
-from models import Edge, EdgeOutcome, EdgeVote, NodeView, Story, StoryNode, User
+from models import Edge, EdgeOutcome, Effect, EdgeVote, NodeView, Story, StoryNode, User
 from schemas import NodeCreate
 from serializers import (
     ancestor_chain,
@@ -134,7 +134,7 @@ def list_nodes(
     views = func.coalesce(views_sq.c.views, 0)
 
     stmt = (
-        select(StoryNode, score, cnt, views)
+        select(StoryNode, Edge, score, cnt, views)
         .join(EdgeOutcome, EdgeOutcome.to_node_id == StoryNode.id)
         .join(Edge, Edge.id == EdgeOutcome.edge_id)
         .outerjoin(score_sq, score_sq.c.nid == StoryNode.id)
@@ -150,8 +150,35 @@ def list_nodes(
     stmt = stmt.limit(limit).offset(offset)
 
     rows = db.execute(stmt).all()
+
+    # Edge mechanics for each choice (for campaign "build" mode): the inbound
+    # edge's check + the effects taking it would apply.
+    edge_ids = [edge.id for (_n, edge, _s, _c, _v) in rows]
+    eff_map: dict[int, list] = {}
+    if edge_ids:
+        eff_rows = db.execute(
+            select(EdgeOutcome.edge_id, Effect)
+            .join(Effect, Effect.outcome_id == EdgeOutcome.id)
+            .where(EdgeOutcome.edge_id.in_(edge_ids))
+        ).all()
+        for (eid, ef) in eff_rows:
+            eff_map.setdefault(eid, []).append({
+                "type": ef.type, "amount": ef.amount, "stat": ef.stat,
+                "item_id": ef.item_id, "flag_key": ef.flag_key,
+            })
+
     response.headers["X-Total-Count"] = str(total)
-    return [serialize_node(n, s, c, view_count=v) for (n, s, c, v) in rows]
+    payload = []
+    for (n, edge, s, c, v) in rows:
+        d = serialize_node(n, s, c, view_count=v)
+        d["edge"] = {
+            "kind": edge.kind,
+            "check_stat": edge.check_stat,
+            "check_dc": edge.check_dc,
+            "effects": eff_map.get(edge.id, []),
+        }
+        payload.append(d)
+    return payload
 
 
 @router.get("/stories/{story_id}/tree")

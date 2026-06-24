@@ -10,6 +10,47 @@ import { useAuth } from "../auth.jsx";
 
 const PAGE = 15;
 
+// Render an edge effect as a short chip in campaign "build" mode. Returns
+// { label, tone } or null for silent effects (flags).
+function effectChip(e) {
+  if (e.type === "hp_delta")
+    return { label: `${e.amount > 0 ? "+" : ""}${e.amount} HP`, tone: e.amount < 0 ? "bad" : "good" };
+  if (e.type === "max_hp_delta")
+    return { label: `${e.amount > 0 ? "+" : ""}${e.amount} max HP`, tone: "good" };
+  if (e.type === "heal_full") return { label: "Fully healed", tone: "good" };
+  if (e.type === "stat_delta")
+    return { label: `${e.amount > 0 ? "+" : ""}${e.amount} ${e.stat?.toUpperCase()}`, tone: "good" };
+  if (e.type === "grant_item") return { label: "Item", tone: "good" };
+  if (e.type === "consume_item") return { label: "Uses an item", tone: "" };
+  if (e.type === "end_run") return { label: "Ends the story", tone: "" };
+  return null; // set_flag etc. — silent
+}
+
+// The mechanics row shown on a choice in campaign mode: destination kind +
+// the effects taking it applies (+ a check tag once roll edges land).
+function ChoiceMechanics({ node }) {
+  const edge = node.edge || {};
+  const chips = (edge.effects || []).map(effectChip).filter(Boolean);
+  const showKind = node.kind && node.kind !== "story";
+  const roll = edge.kind === "roll" && edge.check_stat;
+  if (!showKind && !chips.length && !roll) return null;
+  return (
+    <div className="choice-mechanics">
+      {roll && (
+        <span className="check-tag">
+          {edge.check_stat.toUpperCase()} {edge.check_dc}
+        </span>
+      )}
+      {showKind && <span className={"node-kind kind-" + node.kind}>{node.kind}</span>}
+      {chips.map((c, i) => (
+        <span key={i} className={"fx" + (c.tone ? " fx-" + c.tone : "")}>
+          {c.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function StoryView() {
   const { id, nodeId } = useParams();
   const navigate = useNavigate();
@@ -168,9 +209,15 @@ export default function StoryView() {
           </button>
         </div>
         {story.mode === "campaign" && (
-          <Link to={`/stories/${id}/play`} className="play-cta">
-            ⚔ Play as a character
-          </Link>
+          <div className="campaign-bar">
+            <span className="campaign-hint">
+              🛠 <strong>Build &amp; explore</strong> — jump anywhere via the 🗺 map,
+              see each choice's mechanics, and add branches. Or play it for real:
+            </span>
+            <Link to={`/stories/${id}/play`} className="play-cta">
+              ⚔ Play a run
+            </Link>
+          </div>
         )}
         <div className="story-date">{story.publish_date}</div>
         <div className="story-head">
@@ -245,6 +292,7 @@ export default function StoryView() {
                     {n.edge_prompt && (
                       <div className="edge-prompt">“{n.edge_prompt}”</div>
                     )}
+                    {story.mode === "campaign" && <ChoiceMechanics node={n} />}
                     <p>{n.content}</p>
                     <div className="node-meta">
                       <span className="score">▲ {n.score}</span>
