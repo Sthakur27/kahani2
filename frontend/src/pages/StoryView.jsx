@@ -4,6 +4,7 @@ import { getStory, getNodesPage, getNode, getNodePath, draftNode, createNode } f
 import HistoryNav from "../components/HistoryNav.jsx";
 import SummaryPanel from "../components/SummaryPanel.jsx";
 import AddOptionForm from "../components/AddOptionForm.jsx";
+import RollForm from "../components/RollForm.jsx";
 import VoteButtons from "../components/VoteButtons.jsx";
 import StoryMapModal from "../components/StoryMapModal.jsx";
 import { useAuth } from "../auth.jsx";
@@ -155,6 +156,7 @@ export default function StoryView() {
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [addingRoll, setAddingRoll] = useState(false);
   const [nodeVote, setNodeVote] = useState(null); // {score, myVote} for the current node
   const [mapOpen, setMapOpen] = useState(false);
   const [error, setError] = useState(null);
@@ -218,6 +220,7 @@ export default function StoryView() {
   // path (and load the right branches) from :nodeId, so a refresh stays put.
   useEffect(() => {
     setAdding(false);
+    setAddingRoll(false);
     setError(null);
     if (nodeId) {
       getNodePath(nodeId)
@@ -377,6 +380,16 @@ export default function StoryView() {
               loadBranches(parentId);
             }}
           />
+        ) : addingRoll ? (
+          <RollForm
+            storyId={story.id}
+            parentNodeId={current ? current.id : null}
+            onCancel={() => setAddingRoll(false)}
+            onCreated={() => {
+              setAddingRoll(false);
+              loadBranches(parentId);
+            }}
+          />
         ) : (
           <>
             {loadingBranches ? (
@@ -439,6 +452,15 @@ export default function StoryView() {
                   >
                     {continuing ? "✨ Continuing…" : "✨ Let AI continue"}
                   </button>
+                  {story.mode === "campaign" && (
+                    <button
+                      type="button"
+                      className="add-option-btn"
+                      onClick={() => setAddingRoll(true)}
+                    >
+                      🎲 Add a skill check
+                    </button>
+                  )}
                 </div>
                 {continueNote && (
                   <p className="muted ai-note">{continueNote}</p>

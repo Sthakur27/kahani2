@@ -67,6 +67,15 @@ def generate_cast(title: str, blurb: str, n: int = 3) -> list[dict]:
     return _stub_cast(title, blurb, n)
 
 
+def draft_roll(story, parent, idea: str) -> dict:
+    """Propose a skill-check (roll) edge from a rough idea: a check (stat + DC)
+    and outcome passages. Returns {label, check_stat, check_dc, outcomes:
+    {band: {content, hp}}} with fail+success (and optionally crit_fail/crit_success)."""
+    if _has_key():
+        return _claude_draft_roll(story, parent, idea)
+    return _stub_draft_roll(story, parent, idea)
+
+
 def moderate_text(text: str, rating: str = "pg") -> dict:
     """Screen user-submitted text. Returns {'allowed': bool, 'reason': str|None}.
     Stricter for PG content."""
@@ -380,3 +389,84 @@ def _claude_cast(title, blurb, n=3):
     )
     data = json.loads(next(b.text for b in resp.content if b.type == "text"))
     return data.get("characters", [])
+
+
+# --------------------------------------------------------------------------- #
+# Roll-edge drafting (skill checks) — propose a check + outcome passages
+# --------------------------------------------------------------------------- #
+def _stub_draft_roll(story, parent, idea):
+    head = (idea or "attempt it").strip().rstrip(".")
+    return {
+        "label": head[:60] or "Attempt the feat",
+        "check_stat": "dex",
+        "check_dc": 12,
+        "outcomes": {
+            "success": {"content": f"You {head.lower()} — and pull it off cleanly.", "hp": 0},
+            "fail": {"content": f"You try to {head.lower()}, but it goes wrong.", "hp": -5},
+        },
+    }
+
+
+_ROLL_BAND_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "content": {"type": "string"},
+        "hp": {"type": "integer"},
+    },
+    "required": ["content", "hp"],
+    "additionalProperties": False,
+}
+
+
+def _claude_draft_roll(story, parent, idea):
+    client = _get_client()
+    where = parent.content if parent is not None else story.blurb
+    user = (
+        f"STORY: {story.title}\nPREMISE: {story.blurb}\n\n"
+        f"THE PLAYER IS HERE:\n{where}\n\n"
+        f"THE AUTHOR'S IDEA FOR A RISKY ACTION:\n{idea}"
+    )
+    resp = client.messages.create(
+        model=MODEL,
+        max_tokens=1200,
+        system=(
+            "Design a D&D-style skill check for a choose-your-own-adventure branch. "
+            "Pick the fitting ability (str/dex/con/int/wis/cha) and a DC (8 easy, 12 "
+            "moderate, 16 hard, 18 very hard). Write second-person outcome passages "
+            "(2-3 sentences each), matching the story's tone: 'success' and 'fail' are "
+            "required; add 'crit_success' and 'crit_fail' when they'd be fun. Give each "
+            "outcome an `hp` change: 0 or a small positive on good results, a modest "
+            "negative (-2 to -12) on bad ones. Also give a short 'label' for the action "
+            "(a few words, like a button)."
+        ),
+        output_config={
+            "effort": "low",
+            "format": {
+                "type": "json_schema",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "label": {"type": "string"},
+                        "check_stat": {"type": "string",
+                                       "enum": ["str", "dex", "con", "int", "wis", "cha"]},
+                        "check_dc": {"type": "integer"},
+                        "outcomes": {
+                            "type": "object",
+                            "properties": {
+                                "crit_success": _ROLL_BAND_SCHEMA,
+                                "success": _ROLL_BAND_SCHEMA,
+                                "fail": _ROLL_BAND_SCHEMA,
+                                "crit_fail": _ROLL_BAND_SCHEMA,
+                            },
+                            "required": ["success", "fail"],
+                            "additionalProperties": False,
+                        },
+                    },
+                    "required": ["label", "check_stat", "check_dc", "outcomes"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        messages=[{"role": "user", "content": user}],
+    )
+    return json.loads(next(b.text for b in resp.content if b.type == "text"))

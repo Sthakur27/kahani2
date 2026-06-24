@@ -79,6 +79,10 @@ export const voteNode = (id, value) =>
   http(`/nodes/${id}/vote`, { method: "POST", body: JSON.stringify({ value }) });
 export const draftNode = (data) =>
   http(`/ai/draft`, { method: "POST", body: JSON.stringify(data) });
+export const draftRoll = (data) =>
+  http(`/ai/draft-roll`, { method: "POST", body: JSON.stringify(data) });
+export const createRollEdge = (storyId, data) =>
+  http(`/stories/${storyId}/roll-edges`, { method: "POST", body: JSON.stringify(data) });
 
 // --- leaderboard ---
 export const getLeaderboard = (limit) => http("/leaderboard" + qs({ limit }));

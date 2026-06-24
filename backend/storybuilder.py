@@ -104,6 +104,7 @@ def add_roll(
     check_stat: str,
     check_dc: int,
     outcomes: dict,
+    status: str = "active",
 ) -> tuple[int, dict]:
     """Create a roll edge (a skill check) from `from_node_id` with up to 4 outcome
     bands. `outcomes` maps band -> {content, kind?, label?, effects?}; `fail` and
@@ -120,6 +121,7 @@ def add_roll(
         kind="roll",
         check_stat=check_stat,
         check_dc=check_dc,
+        status=status,
         created_by=author_id,
     )
     session.add(edge)

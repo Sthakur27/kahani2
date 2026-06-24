@@ -21,6 +21,26 @@ class DraftRequest(BaseModel):
     parent_node_id: int | None = None
 
 
+class DraftRollRequest(BaseModel):
+    idea: str | None = None
+    story_id: int | None = None
+    parent_node_id: int | None = None
+
+
+class RollOutcomeIn(BaseModel):
+    content: str | None = None
+    hp: int = 0
+    kind: str = "story"
+
+
+class RollEdgeCreate(BaseModel):
+    parent_node_id: int | None = None
+    label: str | None = None
+    check_stat: str | None = None
+    check_dc: int | None = None
+    outcomes: dict[str, RollOutcomeIn] = {}
+
+
 class VoteRequest(BaseModel):
     value: int = 1
 

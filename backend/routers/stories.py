@@ -7,12 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+import game
 import llm
 import promotion
+import storybuilder
 from auth import current_user, optional_user
 from db import get_db
 from models import Edge, EdgeOutcome, Effect, EdgeVote, NodeView, Story, StoryNode, User
-from schemas import NodeCreate
+from schemas import NodeCreate, RollEdgeCreate
 from serializers import (
     ancestor_chain,
     node_to_dict,
@@ -356,3 +358,75 @@ def create_node(
     result = node_to_dict(db, node)
     result["edge_status"] = edge_status  # "active" (in-play) or "candidate"
     return result
+
+
+@router.post("/stories/{story_id}/roll-edges", status_code=201)
+def create_roll_edge(
+    story_id: int,
+    body: RollEdgeCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Author a roll (skill-check) edge: a check + 2-4 outcome passages. Each
+    outcome is moderated; an `hp` becomes an hp_delta effect. Subject to the same
+    branch-economy gating as plain edges (active if a slot is free, else candidate)."""
+    story = db.get(Story, story_id)
+    if story is None:
+        raise HTTPException(404, "story not found")
+    parent_node_id = body.parent_node_id
+    if parent_node_id is not None:
+        parent = db.get(StoryNode, parent_node_id)
+        if parent is None or parent.story_id != story_id:
+            raise HTTPException(400, "invalid parent_node_id")
+
+    stat = (body.check_stat or "").lower()
+    if stat not in game.STAT_COLS:
+        raise HTTPException(400, "check_stat must be one of str/dex/con/int/wis/cha")
+    if not body.check_dc:
+        raise HTTPException(400, "check_dc is required")
+    label = (body.label or "").strip()
+    if not label:
+        raise HTTPException(400, "label is required")
+
+    bands = ("crit_fail", "fail", "success", "crit_success")
+    outs = {
+        b: o for b, o in body.outcomes.items()
+        if b in bands and (o.content or "").strip()
+    }
+    if "fail" not in outs or "success" not in outs:
+        raise HTTPException(400, "both a 'fail' and a 'success' outcome are required")
+
+    # moderate every outcome passage against the story's rating
+    for b, o in outs.items():
+        verdict = llm.moderate_text(o.content, story.rating)
+        if not verdict.get("allowed"):
+            raise HTTPException(422, detail={
+                "error": f"{b}: {verdict.get('reason') or 'Content not allowed'}",
+                "moderation": True,
+            })
+
+    # branch-economy gating
+    active_here = db.scalar(
+        select(func.count(Edge.id)).where(
+            Edge.story_id == story_id, Edge.status == "active",
+            Edge.from_node_id.is_(None) if parent_node_id is None
+            else Edge.from_node_id == parent_node_id,
+        )
+    ) or 0
+    edge_status = "active" if active_here < (story.active_edge_cap or 3) else "candidate"
+
+    spec = {
+        b: {
+            "content": o.content.strip(),
+            "kind": o.kind or "story",
+            "effects": ([{"type": "hp_delta", "amount": o.hp}] if o.hp else []),
+        }
+        for b, o in outs.items()
+    }
+    edge_id, node_ids = storybuilder.add_roll(
+        db, story_id=story_id, from_node_id=parent_node_id, author_id=user.id,
+        label=label, check_stat=stat, check_dc=body.check_dc,
+        outcomes=spec, status=edge_status,
+    )
+    db.commit()
+    return {"edge_id": edge_id, "nodes": node_ids, "edge_status": edge_status}

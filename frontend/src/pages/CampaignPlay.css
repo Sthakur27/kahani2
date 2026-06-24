@@ -37,6 +37,28 @@
   filter: brightness(1.05);
 }
 
+/* Roll-edge authoring form (StoryView build view) */
+.roll-check-row {
+  display: flex;
+  gap: 1rem;
+}
+.roll-check-row .field-label {
+  flex: 1;
+}
+.roll-band {
+  border-left: 3px solid var(--border);
+  padding-left: 0.75rem;
+  margin: 0.6rem 0;
+}
+.hp-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.hp-input {
+  width: 5rem;
+}
+
 /* Branch-economy proposals (StoryView build view) */
 .proposals {
   margin-top: 1.75rem;
