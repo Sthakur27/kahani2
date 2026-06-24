@@ -130,7 +130,9 @@ The shadow-tree map renders each node with its kind's icon (🗡 combat, ❓ eve
   the RPG layer (stats/HP/dice/items, saveable runs).
 - `death_policy: 'save_anywhere' | 'checkpoint' | 'permadeath'` (default
   `'save_anywhere'`).
-- *(optional later)* `starting_hp`, `starting_kit_id`, `class_options`, cadence.
+- `active_edge_cap: int` (default `3`) — max in-play edges per choice point; see §13.
+- *(optional later)* `starting_hp`, `starting_kit_id`, `class_options`, cadence,
+  `promotion_interval`.
 
 **`StoryNode`** *(existing — simplify)*
 - Keep: `id, story_id, content, summary_so_far, user_id (author), created_at`.
@@ -149,6 +151,8 @@ The shadow-tree map renders each node with its kind's icon (🗡 combat, ❓ eve
 - `kind: 'plain' | 'roll'`
 - `check_stat: 'str'|'dex'|'con'|'int'|'wis'|'cha' | NULL` *(roll only)*
 - `check_dc: int | NULL` *(roll only)*
+- `status: 'active' | 'candidate' | 'retired'` (default `'active'`) — only
+  `active` edges are in-play/traversable; see §13 (branch economy).
 - `created_by, created_at`
 
 **`EdgeOutcome`** — where an edge leads, per result band.
@@ -174,6 +178,9 @@ extensibility point — new mechanics = new `type` values, no schema change.)*
 
 **`Requirement`** — a gate to even *attempt* an edge *(optional in MVP)*.
 - `id, edge_id, type: 'item'|'stat_min'|'flag', key, amount`
+- `consume: bool` (default `false`) — if the requirement is an item, whether
+  taking the edge consumes it. "Use the key on the door" → `consume=true`;
+  "you need a torch to see" → `consume=false` (just must possess it).
 - e.g. "needs `rope`", "needs STR ≥ 14", "flag `met_ferryman` = true".
 
 **`Item`** — catalog of item definitions (shared).
@@ -349,16 +356,19 @@ view can reflect run state (locked edges, requirements, current HP).
 
 ## 10. Phased rollout (per-feature commits)
 
-1. **Schema + migration + backfill** — new tables, `Story.mode`, edge backfill;
-   no UI yet. Verify existing app still works on the edge-backed model.
-2. **Edge-backed reading** — switch the read/tree/path endpoints to edges
-   (all plain). Frontend unchanged. (De-risks the big refactor before adding RPG.)
+1. ✅ **Schema + migration + backfill** — new tables, `Story.mode`, edge backfill;
+   no UI yet. Verified existing app still works on the edge-backed model.
+2. ✅ **Edge-backed reading** — switched the read/tree/path endpoints to edges
+   (all plain). Frontend unchanged. (De-risked the big refactor before adding RPG.)
 3. **Runs + HP + class presets** — start a run, HP bar + character sheet UI,
    `take-edge` for plain edges applying direct effects (the "−3 HP jungle").
 4. **Roll edges** — authoring 2–4 outcomes, server dice, roll animation, bands.
-5. **Items & inventory** — catalog, grant/consume, use-item, health potion.
-6. **Death policy + checkpoints**, then optional permadeath / free-rewind flags.
-7. **AI roll-drafting** — Claude proposes checks + outcome prose.
+5. **Items & inventory** — catalog, grant/consume, use-item, health potion;
+   `Requirement` gates incl. `consume` (use-the-key vs must-possess).
+6. **Branch economy** (§13) — `Edge.status`, active cap of 3, candidate voting,
+   lazy on-read promotion + `/admin/promote`, canonize-on-depth, never-delete.
+7. **Death policy** — save-anywhere save/restore UI; optional checkpoint/permadeath.
+8. **AI roll-drafting** — Claude proposes checks + outcome prose.
 
 ---
 
@@ -427,3 +437,48 @@ interlude entered at a `kind='combat'` node (§2.6).
 Combat reuses the dice + `Effect` machinery; the new weight is the turn loop,
 targeting, enemy AI, status effects, and a combat UI. Treat as its own epic
 (roughly the size of Phases 1–7 combined).
+
+---
+
+## 13. Branch economy — in-play vs candidate paths
+
+**Problem:** open contribution makes popular nodes go 200-wide and shallow. We
+want depth over breadth: a small canonical set of choices per node, with the rest
+as votable proposals that can earn their way in.
+
+**Model:** `Edge.status: active | candidate | retired`.
+- Players traversing the story see/take only **`active`** edges — capped at
+  `Story.active_edge_cap` (default **3**) per *choice point* (a `from_node`, or
+  the story root for top-level edges).
+- New submissions: if the choice point has a free active slot → seated `active`;
+  otherwise filed as **`candidate`** (shown in a "proposals" area, votable).
+- Candidates are voted on at the **edge** level (reuse the vote machinery,
+  targeting edges rather than only nodes).
+
+**Promotion / relegation — the rules that protect depth:**
+- **Canonize-on-depth:** an `active` edge that already has descendants (a subtree
+  was built on it) is **protected** — it cannot be unseated. Competition flows to
+  undeveloped slots; building deep is what makes a branch permanent. *This is the
+  core rule that delivers "deeper and richer."*
+- **Never delete:** a relegated edge becomes `candidate`/`retired`, never removed.
+  It stays explorable as an *alternate* path (already fits the dim "shadow tree").
+  Authored work is never destroyed, and a run's step log preserves any path a
+  player actually took even if it's later relegated.
+- **Promotion bar:** a candidate is seated only when it beats the weakest
+  *unprotected* active edge by a margin (hysteresis — avoids constant swaps).
+
+**Promotion timing — lazy, no worker:**
+- Store a `next_promotion_at` per choice point (column on the `from_node`, plus a
+  story-level value for the root). Evaluate **on read**: when a choice point's
+  proposals are fetched, if `now ≥ next_promotion_at`, run the promotion for that
+  point, advance the timestamp, then serve. No daemon, no queue — promotions
+  happen just-in-time, driven by traffic. A node nobody visits never promotes
+  (nobody's waiting).
+- A manual **`POST /api/admin/promote`** triggers it on demand (control/testing).
+- If the app is ever deployed and wants guaranteed cadence for cold nodes, a
+  single platform/OS cron entry can call that same endpoint — the lazy path and
+  the cron call the **same** promotion function, so nothing is throwaway.
+  (Mirrors the existing `generate_daily` script + `/admin/generate-daily` pattern.)
+
+**Phase:** its own phase (authoring/curation, mostly orthogonal to the run
+engine). Cheap hook reserved now: the `Edge.status` column.
