@@ -123,6 +123,7 @@ def story_to_dict(story: Story) -> dict:
         "rating": story.rating,
         "mode": story.mode,
         "death_policy": story.death_policy,
+        "character_mode": story.character_mode,
         "publish_date": story.publish_date.isoformat(),
         "created_at": story.created_at.isoformat() if story.created_at else None,
     }

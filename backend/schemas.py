@@ -26,5 +26,6 @@ class VoteRequest(BaseModel):
 
 
 class StartRunRequest(BaseModel):
-    char_class: str | None = None  # warrior | rogue | mage (default warrior)
+    option_id: int | None = None   # a story's CharacterOption (curated cast)
+    char_class: str | None = None  # warrior | rogue | mage (classes fallback)
     name: str | None = None

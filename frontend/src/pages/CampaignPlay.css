@@ -175,6 +175,12 @@
   font-size: 0.82rem;
   color: var(--muted);
 }
+.class-stats {
+  font-size: 0.72rem;
+  color: var(--accent);
+  margin-top: 0.2rem;
+  text-transform: capitalize;
+}
 
 /* ---- run layout ---- */
 .run {

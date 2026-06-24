@@ -49,6 +49,7 @@ def summarize_path(story, ancestors, node) -> str:
 
 GENRES = ["sci-fi", "fantasy", "mystery", "horror"]
 RATINGS = ["pg", "mature"]
+ARCHETYPES = ["warrior", "rogue", "mage"]
 
 
 def generate_daily(genre: str, rating: str) -> dict:
@@ -56,6 +57,14 @@ def generate_daily(genre: str, rating: str) -> dict:
     if _has_key():
         return _claude_generate_daily(genre, rating)
     return _stub_generate_daily(genre, rating)
+
+
+def generate_cast(title: str, blurb: str, n: int = 3) -> list[dict]:
+    """A curated playable cast for a campaign: themed reskins of shared archetypes.
+    Returns [{name, blurb, icon, archetype}]."""
+    if _has_key():
+        return _claude_cast(title, blurb, n)
+    return _stub_cast(title, blurb, n)
 
 
 def moderate_text(text: str, rating: str = "pg") -> dict:
@@ -308,3 +317,66 @@ def _claude_moderate(text: str, rating: str) -> dict:
     )
     data = json.loads(next(b.text for b in resp.content if b.type == "text"))
     return {"allowed": bool(data.get("allowed")), "reason": data.get("reason") or None}
+
+
+# --------------------------------------------------------------------------- #
+# Curated character cast — themed reskins of shared archetypes
+# --------------------------------------------------------------------------- #
+_ARCHETYPE_FALLBACK = {
+    "warrior": ("The Sellsword", "🛡", "A scarred veteran who trusts steel over fate."),
+    "rogue": ("The Cutpurse", "🗡", "Quick fingers, quicker feet, and no patience for heroics."),
+    "mage": ("The Hedge-Witch", "✨", "A self-taught spellcaster the academies would never admit."),
+}
+
+
+def _stub_cast(title, blurb, n=3):
+    out = []
+    for arch in ARCHETYPES[:n]:
+        name, icon, b = _ARCHETYPE_FALLBACK[arch]
+        out.append({"name": name, "blurb": b, "icon": icon, "archetype": arch})
+    return out
+
+
+def _claude_cast(title, blurb, n=3):
+    client = _get_client()
+    resp = client.messages.create(
+        model=MODEL,
+        max_tokens=900,
+        system=(
+            f"Invent {n} playable characters for a choose-your-own-adventure RPG, "
+            "each vividly themed to the given premise (specific evocative roles and "
+            "names — never a generic 'Mage'). Map each to exactly one archetype: "
+            "warrior (strong/tough), rogue (nimble/clever), mage (arcane/wise). "
+            "Give each a 2-4 word name, a one-sentence hook, and a single emoji icon."
+        ),
+        output_config={
+            "effort": "low",
+            "format": {
+                "type": "json_schema",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "characters": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "blurb": {"type": "string"},
+                                    "icon": {"type": "string"},
+                                    "archetype": {"type": "string", "enum": ARCHETYPES},
+                                },
+                                "required": ["name", "blurb", "icon", "archetype"],
+                                "additionalProperties": False,
+                            },
+                        }
+                    },
+                    "required": ["characters"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        messages=[{"role": "user", "content": f"TITLE: {title}\nPREMISE: {blurb}"}],
+    )
+    data = json.loads(next(b.text for b in resp.content if b.type == "text"))
+    return data.get("characters", [])

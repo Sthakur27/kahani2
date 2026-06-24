@@ -8,6 +8,7 @@ import game
 from auth import current_user
 from db import get_db
 from models import (
+    CharacterOption,
     Edge,
     EdgeOutcome,
     Requirement,
@@ -20,6 +21,26 @@ from models import (
     StoryNode,
     User,
 )
+
+_STAT_VIEW = {
+    "str": "strength", "dex": "dexterity", "con": "constitution",
+    "int": "intelligence", "wis": "wisdom", "cha": "charisma",
+}
+_SYSTEM_BLURB = {
+    "warrior": "Strong & tough — STR/CON.",
+    "rogue": "Nimble & clever — DEX/INT.",
+    "mage": "Keen & wise — INT/WIS.",
+}
+_SYSTEM_ICON = {"warrior": "🛡", "rogue": "🗡", "mage": "✨"}
+
+
+def _archetype_view(archetype: str) -> dict:
+    preset = game.CLASS_PRESETS.get(archetype, game.CLASS_PRESETS["warrior"])
+    return {
+        "archetype": archetype,
+        "hp": preset["hp"],
+        "stats": {short: preset[col] for short, col in _STAT_VIEW.items()},
+    }
 from schemas import StartRunRequest
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -92,6 +113,31 @@ def _check_requirements(session: Session, run: Run, char: RunCharacter, edge: Ed
         # item requirements arrive with the items phase
 
 
+@router.get("/stories/{story_id}/characters")
+def story_characters(story_id: int, db: Session = Depends(get_db)):
+    """The selectable cast for a story: its curated CharacterOptions if any, else
+    the generic Warrior/Rogue/Mage classes. Each carries the archetype's stats."""
+    if db.get(Story, story_id) is None:
+        raise HTTPException(404, "story not found")
+    opts = db.scalars(
+        select(CharacterOption)
+        .where(CharacterOption.story_id == story_id)
+        .order_by(CharacterOption.sort_order, CharacterOption.id)
+    ).all()
+    if opts:
+        return [
+            {"id": o.id, "name": o.name, "blurb": o.blurb, "icon": o.icon,
+             **_archetype_view(o.archetype)}
+            for o in opts
+        ]
+    # fallback: generic classes (no option id — picked by char_class)
+    return [
+        {"id": None, "name": a.capitalize(), "blurb": _SYSTEM_BLURB[a],
+         "icon": _SYSTEM_ICON[a], **_archetype_view(a)}
+        for a in game.CLASS_PRESETS
+    ]
+
+
 @router.post("/stories/{story_id}/runs", status_code=201)
 def start_run(
     story_id: int,
@@ -99,15 +145,24 @@ def start_run(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    """Begin a playthrough with a class preset; spawns a party-of-1 and logs the
-    initial state snapshot (seq 0). current_node is NULL = at the story blurb."""
+    """Begin a playthrough. Pick a curated CharacterOption (option_id) or a generic
+    class (char_class). Spawns a party-of-1 and logs the seq-0 snapshot."""
     story = db.get(Story, story_id)
     if story is None:
         raise HTTPException(404, "story not found")
-    cls = (body.char_class or "warrior").lower()
-    preset = game.CLASS_PRESETS.get(cls)
+
+    if body.option_id is not None:
+        opt = db.get(CharacterOption, body.option_id)
+        if opt is None or opt.story_id != story_id:
+            raise HTTPException(400, "invalid character option")
+        archetype = opt.archetype
+        char_name = opt.name
+    else:
+        archetype = (body.char_class or "warrior").lower()
+        char_name = (body.name or "Adventurer").strip()[:60] or "Adventurer"
+    preset = game.CLASS_PRESETS.get(archetype)
     if preset is None:
-        raise HTTPException(400, f"unknown class '{cls}'")
+        raise HTTPException(400, f"unknown archetype '{archetype}'")
 
     run = Run(user_id=user.id, story_id=story_id, current_node_id=None, status="active")
     db.add(run)
@@ -115,8 +170,8 @@ def start_run(
 
     char = RunCharacter(
         run_id=run.id,
-        name=(body.name or "Adventurer").strip()[:60] or "Adventurer",
-        char_class=cls,
+        name=char_name,
+        char_class=archetype,
         hp=preset["hp"],
         max_hp=preset["hp"],
         **{k: preset[k] for k in STAT_KEYS},

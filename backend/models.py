@@ -44,6 +44,8 @@ class Story(Base):
     mode: Mapped[str] = mapped_column(String(20), server_default="story")
     # save_anywhere | checkpoint | permadeath — how a run handles save/restore/death.
     death_policy: Mapped[str] = mapped_column(String(20), server_default="save_anywhere")
+    # curated (per-story cast) | classes (generic W/R/M) | fixed (single pregen).
+    character_mode: Mapped[str] = mapped_column(String(20), server_default="classes")
     publish_date: Mapped[dt.date] = mapped_column()
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
@@ -343,3 +345,20 @@ class RunFlag(Base):
     value: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     __table_args__ = (UniqueConstraint("run_id", "key", name="uq_run_flag_key"),)
+
+
+class CharacterOption(Base):
+    """A selectable character for a story's run (curated/AI-generated, authorable
+    later). Themed flavor (name/blurb/icon) over a shared mechanical `archetype`
+    (a key into game.CLASS_PRESETS)."""
+
+    __tablename__ = "character_options"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    story_id: Mapped[int] = mapped_column(ForeignKey("stories.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(80))
+    blurb: Mapped[str | None] = mapped_column(Text, nullable=True)
+    icon: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    archetype: Mapped[str] = mapped_column(String(24), server_default="warrior")
+    sort_order: Mapped[int] = mapped_column(server_default="0", default=0)
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())

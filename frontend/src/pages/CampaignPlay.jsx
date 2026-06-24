@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   getStory,
+  getStoryCharacters,
   getMyRuns,
   getRun,
   getRunSummary,
@@ -10,12 +11,6 @@ import {
 } from "../api.js";
 import { useAuth } from "../auth.jsx";
 import "./CampaignPlay.css";
-
-const CLASSES = [
-  { key: "warrior", icon: "🛡", blurb: "Strong & tough — STR/CON, 28 HP." },
-  { key: "rogue", icon: "🗡", blurb: "Nimble & clever — DEX/INT, 22 HP." },
-  { key: "mage", icon: "✨", blurb: "Keen & wise — INT/WIS, 18 HP." },
-];
 
 const STAT_ORDER = ["str", "dex", "con", "int", "wis", "cha"];
 
@@ -42,9 +37,11 @@ export default function CampaignPlay() {
   const [lastEffects, setLastEffects] = useState([]);
   const [lastRoll, setLastRoll] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [cast, setCast] = useState(null);
 
   useEffect(() => {
     getStory(id).then(setStory).catch((e) => setError(e.message));
+    getStoryCharacters(id).then(setCast).catch(() => setCast([]));
   }, [id]);
 
   // Resume an active run for this story if one exists; else land on the class picker.
@@ -70,10 +67,13 @@ export default function CampaignPlay() {
   }, [id, user]);
 
   const begin = useCallback(
-    (charClass) => {
+    (option) => {
       setBusy(true);
       setError(null);
-      startRun(id, { char_class: charClass })
+      const body = option.id
+        ? { option_id: option.id }
+        : { char_class: option.archetype };
+      startRun(id, body)
         .then((s) => {
           setRun(s);
           setLastEffects([]);
@@ -145,7 +145,7 @@ export default function CampaignPlay() {
       </div>
 
       {!run ? (
-        <ClassPicker story={story} busy={busy} onPick={begin} />
+        <ClassPicker story={story} cast={cast} busy={busy} onPick={begin} />
       ) : (
         <RunView
           run={run}
@@ -166,27 +166,34 @@ export default function CampaignPlay() {
   );
 }
 
-function ClassPicker({ story, busy, onPick }) {
+function ClassPicker({ story, cast, busy, onPick }) {
   return (
     <div className="class-picker">
       <h1>{story ? story.title : "Begin your run"}</h1>
       {story && <p className="blurb lead">{story.blurb}</p>}
       <h3 className="branches-title">Choose your character</h3>
-      <div className="class-grid">
-        {CLASSES.map((c) => (
-          <button
-            key={c.key}
-            type="button"
-            className="class-card"
-            disabled={busy}
-            onClick={() => onPick(c.key)}
-          >
-            <span className="class-icon">{c.icon}</span>
-            <span className="class-name">{c.key}</span>
-            <span className="class-blurb">{c.blurb}</span>
-          </button>
-        ))}
-      </div>
+      {cast === null ? (
+        <p className="muted">Loading the cast…</p>
+      ) : (
+        <div className="class-grid">
+          {cast.map((c, i) => (
+            <button
+              key={c.id ?? c.archetype ?? i}
+              type="button"
+              className="class-card"
+              disabled={busy}
+              onClick={() => onPick(c)}
+            >
+              <span className="class-icon">{c.icon}</span>
+              <span className="class-name">{c.name}</span>
+              <span className="class-blurb">{c.blurb}</span>
+              <span className="class-stats">
+                ❤ {c.hp} HP · {c.archetype}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

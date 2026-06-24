@@ -89,6 +89,7 @@ export const getMyVotes = () => http("/me/votes");
 export const getMyNodes = () => http("/me/nodes");
 
 // --- campaign runs (RPG) ---
+export const getStoryCharacters = (storyId) => http(`/stories/${storyId}/characters`);
 export const getMyRuns = () => http("/me/runs");
 export const startRun = (storyId, body = {}) =>
   http(`/stories/${storyId}/runs`, { method: "POST", body: JSON.stringify(body) });
