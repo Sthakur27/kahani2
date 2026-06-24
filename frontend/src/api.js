@@ -87,3 +87,11 @@ export const getLeaderboard = (limit) => http("/leaderboard" + qs({ limit }));
 export const getMyViews = () => http("/me/views");
 export const getMyVotes = () => http("/me/votes");
 export const getMyNodes = () => http("/me/nodes");
+
+// --- campaign runs (RPG) ---
+export const getMyRuns = () => http("/me/runs");
+export const startRun = (storyId, body = {}) =>
+  http(`/stories/${storyId}/runs`, { method: "POST", body: JSON.stringify(body) });
+export const getRun = (runId) => http(`/runs/${runId}`);
+export const takeEdge = (runId, edgeId) =>
+  http(`/runs/${runId}/take/${edgeId}`, { method: "POST" });

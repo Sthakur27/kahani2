@@ -1,6 +1,7 @@
 import { Routes, Route, Link } from "react-router-dom";
 import StoriesList from "./pages/StoriesList.jsx";
 import StoryView from "./pages/StoryView.jsx";
+import CampaignPlay from "./pages/CampaignPlay.jsx";
 import Trending from "./pages/Trending.jsx";
 import Profile from "./pages/Profile.jsx";
 import Login from "./pages/Login.jsx";
@@ -48,6 +49,7 @@ export default function App() {
           <Route path="/me" element={<Profile />} />
           <Route path="/login" element={<Login />} />
           <Route path="/stories/:id" element={<StoryView />} />
+          <Route path="/stories/:id/play" element={<CampaignPlay />} />
           <Route path="/stories/:id/nodes/:nodeId" element={<StoryView />} />
         </Routes>
       </main>

@@ -167,6 +167,11 @@ export default function StoryView() {
             🗺
           </button>
         </div>
+        {story.mode === "campaign" && (
+          <Link to={`/stories/${id}/play`} className="play-cta">
+            ⚔ Play as a character
+          </Link>
+        )}
         <div className="story-date">{story.publish_date}</div>
         <div className="story-head">
           <h1>{story.title}</h1>
