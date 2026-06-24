@@ -97,3 +97,5 @@ export const getRun = (runId) => http(`/runs/${runId}`);
 export const getRunSummary = (runId) => http(`/runs/${runId}/summary`);
 export const takeEdge = (runId, edgeId) =>
   http(`/runs/${runId}/take/${edgeId}`, { method: "POST" });
+export const useItem = (runId, itemId) =>
+  http(`/runs/${runId}/use-item/${itemId}`, { method: "POST" });

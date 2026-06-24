@@ -190,14 +190,79 @@
   align-items: start;
 }
 
-/* ---- character sheet ---- */
-.char-sheet {
+/* ---- sidebar (sheet + inventory) ---- */
+.run-side {
   position: sticky;
   top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ---- character sheet ---- */
+.char-sheet {
   background: #fffdf9;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.9rem 1rem;
+}
+
+/* ---- inventory ---- */
+.inventory {
+  background: #fffdf9;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.8rem 1rem;
+}
+.inv-head {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.inv-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.inv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.inv-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.inv-icon {
+  font-size: 1rem;
+}
+.inv-name {
+  flex: 1;
+}
+.inv-use {
+  font-size: 0.74rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.inv-use:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fffdf9;
+}
+.inv-use:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .char-head {
   display: flex;
@@ -434,7 +499,7 @@
   .run {
     grid-template-columns: 1fr;
   }
-  .char-sheet {
+  .run-side {
     position: static;
   }
   .class-grid {

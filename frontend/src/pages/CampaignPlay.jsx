@@ -8,6 +8,7 @@ import {
   getRunSummary,
   startRun,
   takeEdge,
+  useItem,
 } from "../api.js";
 import { useAuth } from "../auth.jsx";
 import "./CampaignPlay.css";
@@ -102,6 +103,23 @@ export default function CampaignPlay() {
     [run, busy]
   );
 
+  const consume = useCallback(
+    (itemId) => {
+      if (!run || busy) return;
+      setBusy(true);
+      setError(null);
+      useItem(run.id, itemId)
+        .then((s) => {
+          setRun(s);
+          setLastEffects(s.applied_effects || []);
+          setLastRoll(null);
+        })
+        .catch((e) => setError(e.message))
+        .finally(() => setBusy(false));
+    },
+    [run, busy]
+  );
+
   // When the run reaches a terminal state (death / authored ending / dead-end),
   // pull the journey recap for the end screen.
   useEffect(() => {
@@ -155,6 +173,7 @@ export default function CampaignPlay() {
           lastRoll={lastRoll}
           summary={summary}
           onChoose={choose}
+          onUseItem={consume}
           onRestart={() => {
             setRun(null);
             setLastEffects([]);
@@ -217,7 +236,7 @@ function RollBanner({ roll }) {
   );
 }
 
-function RunView({ run, story, busy, lastEffects, lastRoll, summary, onChoose, onRestart }) {
+function RunView({ run, story, busy, lastEffects, lastRoll, summary, onChoose, onUseItem, onRestart }) {
   const char = run.snapshot?.characters?.[0];
   const dead = run.status === "dead";
   const isEnding = run.status === "won" || run.node?.is_ending;
@@ -228,7 +247,15 @@ function RunView({ run, story, busy, lastEffects, lastRoll, summary, onChoose, o
 
   return (
     <div className="run">
-      {char && <CharacterSheet char={char} />}
+      <div className="run-side">
+        {char && <CharacterSheet char={char} />}
+        <Inventory
+          items={run.inventory || []}
+          busy={busy}
+          active={run.status === "active"}
+          onUse={onUseItem}
+        />
+      </div>
 
       <section className="run-main">
         {lastRoll && <RollBanner roll={lastRoll} />}
@@ -323,6 +350,39 @@ function RunView({ run, story, busy, lastEffects, lastRoll, summary, onChoose, o
         )}
       </section>
     </div>
+  );
+}
+
+function Inventory({ items, busy, active, onUse }) {
+  return (
+    <aside className="inventory">
+      <div className="inv-head">Inventory</div>
+      {items.length === 0 ? (
+        <p className="inv-empty">Empty-handed.</p>
+      ) : (
+        <ul className="inv-list">
+          {items.map((it) => (
+            <li key={it.item_id} className="inv-item">
+              <span className="inv-icon">{it.icon}</span>
+              <span className="inv-name">
+                {it.name}
+                {it.count > 1 ? ` ×${it.count}` : ""}
+              </span>
+              {it.usable && active && (
+                <button
+                  type="button"
+                  className="inv-use"
+                  disabled={busy}
+                  onClick={() => onUse(it.item_id)}
+                >
+                  Use
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </aside>
   );
 }
 
