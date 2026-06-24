@@ -2,6 +2,7 @@ import { Routes, Route, Link } from "react-router-dom";
 import StoriesList from "./pages/StoriesList.jsx";
 import StoryView from "./pages/StoryView.jsx";
 import Trending from "./pages/Trending.jsx";
+import Profile from "./pages/Profile.jsx";
 import Login from "./pages/Login.jsx";
 import { useAuth } from "./auth.jsx";
 
@@ -10,7 +11,7 @@ function HeaderAuth() {
   if (user) {
     return (
       <span className="header-auth">
-        Hi, {user.username}
+        Hi, <Link to="/me" className="link-like">{user.username}</Link>
         <span className="sep"> · </span>
         <button type="button" className="link-btn" onClick={logout}>
           Log out
@@ -44,6 +45,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<StoriesList />} />
           <Route path="/trending" element={<Trending />} />
+          <Route path="/me" element={<Profile />} />
           <Route path="/login" element={<Login />} />
           <Route path="/stories/:id" element={<StoryView />} />
           <Route path="/stories/:id/nodes/:nodeId" element={<StoryView />} />

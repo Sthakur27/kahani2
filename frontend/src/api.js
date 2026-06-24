@@ -82,3 +82,8 @@ export const draftNode = (data) =>
 
 // --- leaderboard ---
 export const getLeaderboard = (limit) => http("/leaderboard" + qs({ limit }));
+
+// --- me (profile/history) ---
+export const getMyViews = () => http("/me/views");
+export const getMyVotes = () => http("/me/votes");
+export const getMyNodes = () => http("/me/nodes");
