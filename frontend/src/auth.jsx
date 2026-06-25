@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   setAuthToken,
   setUnauthorizedHandler,
@@ -30,6 +31,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [auth, setAuth] = useState(initial); // { user, token } | null
   const user = auth?.user ?? null;
+  const navigate = useNavigate();
 
   // Keep api.js + localStorage in sync whenever auth changes.
   useEffect(() => {
@@ -42,11 +44,20 @@ export function AuthProvider({ children }) {
     }
   }, [auth]);
 
-  // If any request comes back 401 (token expired/invalid), drop the session.
+  // If any request comes back 401 (token expired/invalid, or an action needs
+  // auth), drop the session and send the user to the login page.
   useEffect(() => {
-    setUnauthorizedHandler(() => setAuth(null));
+    setUnauthorizedHandler(() => {
+      setAuth(null);
+      if (window.location.pathname !== "/login") {
+        navigate("/login", {
+          replace: true,
+          state: { from: window.location.pathname },
+        });
+      }
+    });
     return () => setUnauthorizedHandler(null);
-  }, []);
+  }, [navigate]);
 
   const value = useMemo(
     () => ({

@@ -1,4 +1,4 @@
-import { Routes, Route, Link } from "react-router-dom";
+import { Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
 import StoriesList from "./pages/StoriesList.jsx";
 import StoryView from "./pages/StoryView.jsx";
 import CampaignPlay from "./pages/CampaignPlay.jsx";
@@ -27,6 +27,16 @@ function HeaderAuth() {
   );
 }
 
+// Gate a route behind auth: bounce to /login (remembering where we came from).
+function RequireAuth({ children }) {
+  const { user } = useAuth();
+  const location = useLocation();
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+  return children;
+}
+
 export default function App() {
   return (
     <div className="app">
@@ -46,10 +56,10 @@ export default function App() {
         <Routes>
           <Route path="/" element={<StoriesList />} />
           <Route path="/trending" element={<Trending />} />
-          <Route path="/me" element={<Profile />} />
+          <Route path="/me" element={<RequireAuth><Profile /></RequireAuth>} />
           <Route path="/login" element={<Login />} />
           <Route path="/stories/:id" element={<StoryView />} />
-          <Route path="/stories/:id/play" element={<CampaignPlay />} />
+          <Route path="/stories/:id/play" element={<RequireAuth><CampaignPlay /></RequireAuth>} />
           <Route path="/stories/:id/nodes/:nodeId" element={<StoryView />} />
         </Routes>
       </main>

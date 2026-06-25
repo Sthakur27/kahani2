@@ -113,8 +113,12 @@ function RollChoiceCard({ group, onEnter }) {
             {edge.check_stat.toUpperCase()} {edge.check_dc}
           </span>
         )}
-        <span className="muted">🎲 roll · {items.length} outcomes</span>
+        <span className="muted">
+          🎲 Dice check — the roll decides which outcome.{" "}
+          <strong>Play a run</strong> to attempt it.
+        </span>
       </div>
+      <div className="roll-outcomes-label muted">Possible outcomes (preview):</div>
       <ul className="roll-outcomes">
         {items.map((n) => (
           <li

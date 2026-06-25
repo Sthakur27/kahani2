@@ -103,6 +103,10 @@
   cursor: default;
   border-left: 3px solid var(--accent);
 }
+.roll-outcomes-label {
+  font-size: 0.75rem;
+  margin: 0.5rem 0 0.25rem;
+}
 .roll-outcomes {
   list-style: none;
   margin: 0.5rem 0 0;
